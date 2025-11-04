@@ -467,43 +467,37 @@ export default function CompleteProfileContent() {
       }
 
       // Prepare payload sesuai format backend API
-      const payload: {
-        name: string;
-        phone_number: string;
-        user_type: 'individu' | 'lembaga';
-        province: string;
-        city: string;
-        district: string;
-        sub_district: string;
-        postal_code: string;
-        is_profile_complete: boolean;
-      } = mode === "individu" 
+      const payload = mode === "individu" 
         ? {
             name: individu.namaLengkap,
             phone_number: individu.nomorTelepon,
-            user_type: mode,
+            user_type: mode as 'individu' | 'lembaga',
             province: individu.provinsi,
             city: individu.kabupaten,
             district: individu.kecamatan,
             sub_district: individu.kelurahan,
             postal_code: individu.kodePos,
             is_profile_complete: true,
+            // Individu-specific field
+            gender: (individu.jenisKelamin === "laki-laki" ? "male" : "female") as 'male' | 'female',
           }
         : {
             name: lembaga.namaLembaga,
             phone_number: lembaga.nomorTelepon,
-            user_type: mode,
+            user_type: mode as 'individu' | 'lembaga',
             province: lembaga.provinsi,
             city: lembaga.kabupaten,
             district: lembaga.kecamatan,
             sub_district: lembaga.kelurahan,
             postal_code: lembaga.kodePos,
             is_profile_complete: true,
+            // Lembaga-specific field
+            institution_type: lembaga.jenisLembaga,
           };
 
       console.log("Submitting profile to backend:", payload);
 
-      // Call backend API
+      // Call backend API - Use PUT /user/me to update existing user (created during Google login)
       const updatedUser = await userService.updateProfile(payload, token);
       
       console.log("Profile updated successfully:", updatedUser);

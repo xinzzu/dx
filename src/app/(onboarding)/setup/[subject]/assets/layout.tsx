@@ -88,23 +88,13 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         await assetsService.submitAllAssets(buildings, vehicles, userId, token);
         console.log("✅ Assets submitted successfully");
 
-        // 2. Update user profile - mark assets as completed
-        await userService.updateProfile(
-          {
-            is_asset_buildings_completed: buildingCount > 0,
-            is_asset_vehicles_completed: vehicleCount > 0,
-          },
-          token
-        );
-        console.log("✅ User profile updated");
-
-        // 3. Mark onboarding complete
+        // 2. Mark onboarding complete
         markAssetsCompleted();
 
-        // 4. Clear store
+        // 3. Clear store
         resetAssets();
 
-        // 5. Redirect to dashboard
+        // 4. Redirect to dashboard
         router.replace(subject === "lembaga" ? "/lembaga" : "/app");
       } catch (error) {
         console.error("❌ Failed to submit assets:", error);

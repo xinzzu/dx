@@ -11,14 +11,16 @@ export default function OnboardingPage() {
   const router = useRouter();
   const q = useSearchParams();
   const type = q?.get("type") === "lembaga" ? "lembaga" : "individu";
-  const { onboardingCompleted } = useOnboarding();
+  const { assetsCompleted, markOnboardingCompleted } = useOnboarding();
 
-  // Redirect if onboarding is already completed
+  // Redirect if assets are already completed (user finished the full flow)
   useEffect(() => {
-    if (onboardingCompleted) {
+    if (assetsCompleted) {
+      // Auto-mark onboarding as completed if not already
+      markOnboardingCompleted();
       router.replace(type === "lembaga" ? "/lembaga" : "/app");
     }
-  }, [onboardingCompleted, type, router]);
+  }, [assetsCompleted, type, router, markOnboardingCompleted]);
 
   return (
     <RequireProgress step="onboarding">

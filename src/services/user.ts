@@ -7,6 +7,18 @@ import { fetchWithAuth } from '@/lib/api/client';
 
 // === Type Definitions ===
 
+export interface IndividualProfile {
+  full_name: string;
+  gender: 'male' | 'female';
+  active: boolean;
+}
+
+export interface InstitutionProfile {
+  name: string;
+  active: boolean;
+  institution_type?: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -20,6 +32,9 @@ export interface UserProfile {
   is_asset_buildings_completed: boolean;
   is_asset_vehicles_completed: boolean;
   active: boolean;
+  // Nested profiles based on user_type
+  individual_profile?: IndividualProfile;
+  institution_profile?: InstitutionProfile;
 }
 
 export interface UpdateProfilePayload {
@@ -35,6 +50,10 @@ export interface UpdateProfilePayload {
   is_profile_complete?: boolean;
   is_asset_buildings_completed?: boolean;
   is_asset_vehicles_completed?: boolean;
+  // Individu-specific fields
+  gender?: 'male' | 'female';
+  // Lembaga-specific fields
+  institution_type?: string;
 }
 
 // === User Service ===
@@ -50,13 +69,26 @@ export const userService = {
   },
 
   /**
-   * Update user profile (complete profile)
+   * Create user profile (first time complete profile)
+   * @param payload - Profile data to create
+   * @param token - Authentication token
+   * @returns Created user profile
+   */
+  async createProfile(payload: UpdateProfilePayload, token: string): Promise<UserProfile> {
+    return fetchWithAuth<UserProfile>('/user/', token, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  /**
+   * Update user profile (edit existing profile)
    * @param payload - Profile data to update
    * @param token - Authentication token
    * @returns Updated user profile
    */
   async updateProfile(payload: UpdateProfilePayload, token: string): Promise<UserProfile> {
-    return fetchWithAuth<UserProfile>('/user/', token, {
+    return fetchWithAuth<UserProfile>('/user/me', token, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });

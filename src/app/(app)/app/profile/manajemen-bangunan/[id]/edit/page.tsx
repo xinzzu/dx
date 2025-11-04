@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import TextField from "@/components/ui/TextField";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
-import useAuth from "@/hooks/useAuth";
+import { authService } from "@/services/auth";
 import { assetsService, BuildingResponse } from "@/services/assets";
 import { areaService, Province, Regency, District, Village } from "@/services/area";
 import { electricityService, ElectricityCategory, ElectricityTariff } from "@/services/electricity";
@@ -16,25 +16,6 @@ import type { ApplianceId } from "@/stores/assetWizard";
 export default function EditBuildingPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
-  const { getIdToken } = useAuth();
-  
-  // Helper to get backend token (not Firebase token)
-  // Wrapped with useCallback to prevent recreating on every render
-  const getBackendToken = useCallback(async (): Promise<string | null> => {
-    const { authService } = await import("@/services/auth");
-    let backendToken = authService.getToken();
-    
-    // If no backend token, register with Firebase token
-    if (!backendToken) {
-      const firebaseToken = await getIdToken();
-      if (!firebaseToken) return null;
-      
-      backendToken = await authService.loginWithGoogle(firebaseToken);
-      authService.saveToken(backendToken);
-    }
-    
-    return backendToken;
-  }, [getIdToken]);
 
   // Building data
   const [building, setBuilding] = useState<BuildingResponse | null>(null);
@@ -76,7 +57,7 @@ export default function EditBuildingPage() {
   useEffect(() => {
     async function fetchBuilding() {
       try {
-        const token = await getBackendToken();
+        const token = authService.getToken();
         if (!token) return;
 
         const buildings = await assetsService.getBuildings(token);
@@ -91,6 +72,15 @@ export default function EditBuildingPage() {
           
           setLuas(foundBuilding.metadata?.area_sqm?.toString() || "");
           setAlamatJalan(foundBuilding.full_address || "");
+          
+          // Debug: Check area codes from backend
+          console.log("📍 Building area codes from backend:", {
+            province: foundBuilding.province_code,
+            regency: foundBuilding.regency_code,
+            district: foundBuilding.district_code,
+            village: foundBuilding.village_code,
+          });
+          
           setProvinsi(foundBuilding.province_code);
           setKabKota(foundBuilding.regency_code);
           setKecamatan(foundBuilding.district_code);
@@ -113,6 +103,8 @@ export default function EditBuildingPage() {
               const matchedTariff = catTariffs.find(t => t.id === savedTariffId);
               
               if (matchedTariff) {
+                // Load tariffs first, then set category and tariff together
+                setTariffs(catTariffs);
                 setCategoryId(cat.id);
                 setTariffId(savedTariffId);
                 break;
@@ -139,7 +131,7 @@ export default function EditBuildingPage() {
     async function loadCategories() {
       setLoadingCategories(true);
       try {
-        const token = await getBackendToken();
+        const token = authService.getToken();
         if (!token) return;
         const data = await electricityService.getCategories(token);
         setCategories(data);
@@ -155,19 +147,32 @@ export default function EditBuildingPage() {
   // Load tariffs when category changes
   useEffect(() => {
     async function loadTariffs(catId: string) {
+      // Skip if tariffs already loaded (from initial building data fetch)
+      if (tariffs.length > 0 && tariffId) {
+        console.log("⏭️ Skipping tariff reload, data already loaded");
+        return;
+      }
+      
       setLoadingTariffs(true);
-      // Clear tariffs first to avoid showing stale data
-      setTariffs([]);
       
       try {
-        const token = await getBackendToken();
+        const token = authService.getToken();
         if (!token) return;
-        
-        console.log(`🔄 Loading tariffs for category: ${catId}`);
+
+        const masked = token ? `${String(token).slice(0, 8)}...` : 'none';
+        console.log(`🔄 Loading tariffs for category: ${catId} (token: ${masked})`);
         const data = await electricityService.getTariffsByCategory(catId, token);
         console.log(`✅ Loaded ${data.length} tariffs for category ${catId}:`, data.map(t => t.power_capacity_label));
-        
-        setTariffs(data);
+
+        // If backend returns all tariffs (no filtering), apply client-side filter as fallback
+        const filtered = data.filter((t) => t.category_id === catId);
+        if (filtered.length !== data.length) {
+          console.warn(`⚠️ Backend returned ${data.length} tariffs, but ${filtered.length} match category ${catId}. Applying client-side filter.`);
+          console.log('Filtered tariffs:', filtered.map(t => t.power_capacity_label));
+          setTariffs(filtered);
+        } else {
+          setTariffs(data);
+        }
       } catch (error) {
         console.error("Failed to load tariffs:", error);
         setTariffs([]);
@@ -181,16 +186,15 @@ export default function EditBuildingPage() {
     } else {
       console.log("⚠️ No category selected, clearing tariffs");
       setTariffs([]);
-      setTariffId("");
     }
-  }, [categoryId]);
+  }, [categoryId, tariffs.length, tariffId]);
 
   // Load provinces on mount
   useEffect(() => {
     async function loadProvinces() {
       setLoadingProvinces(true);
       try {
-        const token = await getBackendToken();
+        const token = authService.getToken();
         if (!token) return;
         const data = await areaService.getProvinces(token);
         setProvinces(data);
@@ -206,11 +210,13 @@ export default function EditBuildingPage() {
   // Load regencies when province changes
   useEffect(() => {
     async function loadRegencies(provCode: string) {
+      console.log("🔄 Loading regencies for province:", provCode);
       setLoadingRegencies(true);
       try {
-        const token = await getBackendToken();
+        const token = authService.getToken();
         if (!token) return;
         const data = await areaService.getRegencies(provCode, token);
+        console.log(`✅ Loaded ${data.length} regencies for province ${provCode}`);
         setRegencies(data);
       } catch (error) {
         console.error("Failed to load regencies:", error);
@@ -223,6 +229,7 @@ export default function EditBuildingPage() {
     if (provinsi) {
       loadRegencies(provinsi);
     } else {
+      console.log("⚠️ No province selected, clearing regencies");
       setRegencies([]);
       setKabKota("");
     }
@@ -231,11 +238,13 @@ export default function EditBuildingPage() {
   // Load districts when regency changes
   useEffect(() => {
     async function loadDistricts(regCode: string) {
+      console.log("🔄 Loading districts for regency:", regCode);
       setLoadingDistricts(true);
       try {
-        const token = await getBackendToken();
+        const token = authService.getToken();
         if (!token) return;
         const data = await areaService.getDistricts(regCode, token);
+        console.log(`✅ Loaded ${data.length} districts for regency ${regCode}`);
         setDistricts(data);
       } catch (error) {
         console.error("Failed to load districts:", error);
@@ -248,6 +257,7 @@ export default function EditBuildingPage() {
     if (kabKota) {
       loadDistricts(kabKota);
     } else {
+      console.log("⚠️ No regency selected, clearing districts");
       setDistricts([]);
       setKecamatan("");
     }
@@ -256,11 +266,13 @@ export default function EditBuildingPage() {
   // Load villages when district changes
   useEffect(() => {
     async function loadVillages(distCode: string) {
+      console.log("🔄 Loading villages for district:", distCode);
       setLoadingVillages(true);
       try {
-        const token = await getBackendToken();
+        const token = authService.getToken();
         if (!token) return;
         const data = await areaService.getVillages(distCode, token);
+        console.log(`✅ Loaded ${data.length} villages for district ${distCode}`);
         setVillages(data);
       } catch (error) {
         console.error("Failed to load villages:", error);
@@ -273,6 +285,7 @@ export default function EditBuildingPage() {
     if (kecamatan) {
       loadVillages(kecamatan);
     } else {
+      console.log("⚠️ No district selected, clearing villages");
       setVillages([]);
       setKelurahan("");
     }
@@ -281,35 +294,60 @@ export default function EditBuildingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validasi: minimal 1 peralatan listrik harus dipilih
-    const hasAppliances = Object.values(appliances).some(count => count > 0);
-    if (!hasAppliances) {
-      alert("Silakan pilih minimal 1 peralatan listrik");
-      return;
-    }
+    // Peralatan listrik sekarang opsional (tidak wajib)
     
-    // TODO: Implement PUT /building-assets/:id
-    // When implementing, send appliances as electronics_inventory in metadata
-    const payload = {
-      id,
-      name,
-      electricity_tariff_id: tariffId,
-      province_code: provinsi,
-      regency_code: kabKota,
-      district_code: kecamatan,
-      village_code: kelurahan,
-      postal_code: postalCode,
-      full_address: alamatJalan,
-      metadata: {
-        area_sqm: luas ? parseFloat(luas) : undefined,
-        electronics_inventory: appliances, // Simpan appliances ke electronics_inventory
-      },
-    };
-    
-    console.log("Update building payload:", payload);
+    setLoading(true);
 
-    // For now, just go back
-    router.back();
+    try {
+      const token = authService.getToken();
+      if (!token) return;
+
+      // Get user profile to get user_id (REQUIRED by backend)
+      const { userService } = await import("@/services/user");
+      const profile = await userService.getMe(token);
+      
+      if (!profile.id) {
+        alert("User ID tidak tersedia");
+        return;
+      }
+
+      // WORKAROUND: Clean codes (remove leading zeros and invalid characters from backend bug)
+      const cleanCode = (code: string) => code.replace(/[^0-9.]/g, '');
+      const cleanUUID = (uuid: string) => {
+        // Remove leading zeros and keep only valid UUID characters (0-9, a-f, -)
+        return uuid.replace(/^0+/, '').replace(/[^0-9a-f-]/gi, '');
+      };
+      
+      const payload = {
+        name,
+        user_id: profile.id, // REQUIRED: User ID from backend
+        electricity_tariff_id: cleanUUID(tariffId),
+        province_code: cleanCode(provinsi),
+        regency_code: cleanCode(kabKota),
+        district_code: cleanCode(kecamatan),
+        village_code: cleanCode(kelurahan),
+        address_label: name, // REQUIRED: Use building name as address label
+        postal_code: postalCode || undefined, // String, not number
+        full_address: alamatJalan,
+        metadata: {
+          area_sqm: luas ? parseFloat(luas) : undefined,
+          electronics_inventory: appliances, // Simpan appliances ke electronics_inventory
+        },
+      };
+      
+      console.log("Update building payload:", payload);
+      console.log("👤 User ID:", profile.id);
+
+      await assetsService.updateBuilding(id, payload, token);
+      
+      alert("Bangunan berhasil diperbarui!");
+      router.push("/app/profile/manajemen-bangunan");
+    } catch (error) {
+      console.error("Failed to update building:", error);
+      alert(error instanceof Error ? error.message : "Gagal memperbarui bangunan");
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {

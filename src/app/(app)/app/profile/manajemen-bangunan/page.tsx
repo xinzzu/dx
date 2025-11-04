@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useCallback } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import Button from "@/components/ui/Button"
@@ -16,29 +16,45 @@ export default function Page() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch buildings from API
-  useEffect(() => {
-    async function fetchBuildings() {
-      try {
-        setLoading(true)
-        const token = await getIdToken()
-        if (!token) {
-          setError("No authentication token")
-          return
-        }
-        
-        const data = await assetsService.getBuildings(token)
-        setBuildings(data)
-      } catch (err) {
-        console.error("Failed to fetch buildings:", err)
-        setError(err instanceof Error ? err.message : "Failed to load buildings")
-      } finally {
-        setLoading(false)
-      }
+  // Helper to get backend token (not Firebase token)
+  const getBackendToken = useCallback(async (): Promise<string | null> => {
+    const { authService } = await import("@/services/auth");
+    let backendToken = authService.getToken();
+    
+    if (!backendToken) {
+      const firebaseToken = await getIdToken();
+      if (!firebaseToken) return null;
+      
+      backendToken = await authService.loginWithGoogle(firebaseToken);
+      authService.saveToken(backendToken);
     }
     
+    return backendToken;
+  }, [getIdToken]);
+
+  // Fetch buildings from API
+  const fetchBuildings = useCallback(async () => {
+    try {
+      setLoading(true)
+      const token = await getBackendToken()
+      if (!token) {
+        setError("No authentication token")
+        return
+      }
+      
+      const data = await assetsService.getBuildings(token)
+      setBuildings(data)
+    } catch (err) {
+      console.error("Failed to fetch buildings:", err)
+      setError(err instanceof Error ? err.message : "Failed to load buildings")
+    } finally {
+      setLoading(false)
+    }
+  }, [getBackendToken]);
+
+  useEffect(() => {
     fetchBuildings()
-  }, [getIdToken])
+  }, [fetchBuildings])
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 pb-28">
@@ -70,14 +86,18 @@ export default function Page() {
         ) : buildings.length === 0 ? (
           <EmptyState variant="building" text="Belum ada bangunan. Tambahkan terlebih dahulu." />
         ) : (
-          <ManageBuildingList buildings={buildings} baseEditPath="/app/profile/manajemen-bangunan" />
+          <ManageBuildingList 
+            buildings={buildings} 
+            baseEditPath="/app/profile/manajemen-bangunan"
+            onRefresh={fetchBuildings}
+          />
         )}
       </div>
 
       {/* CTA */}
       <div className="sticky bottom-6 mt-6">
-        <Button size="lg" fullWidth onClick={() => router.push("/app/profile/bangunan/new")}>
-          Tambah Bangunan
+        <Button size="lg" fullWidth onClick={() => router.push("/app/profile/manajemen-bangunan/new")}>
+          + Tambah Bangunan
         </Button>
       </div>
     </main>

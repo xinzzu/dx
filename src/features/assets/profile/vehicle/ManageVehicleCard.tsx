@@ -32,16 +32,16 @@ export default function ManageVehicleCard({
 
       <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
         <div>
-          <div className="text-black/60">Emission Factor</div>
-          <div className="font-semibold text-xs">ID: {data.emission_factor_id.slice(0, 8)}...</div>
+          <div className="text-black/60">Jenis Kendaraan</div>
+          <div className="font-semibold">{data.metadata?.vehicle_type || "—"}</div>
+        </div>
+        <div>
+          <div className="text-black/60">Kapasitas Mesin</div>
+          <div className="font-semibold">{data.metadata?.capacity_range || "—"}</div>
         </div>
         <div>
           <div className="text-black/60">Bahan Bakar</div>
           <div className="font-semibold">{cap(data.metadata?.fuel_type)}</div>
-        </div>
-        <div>
-          <div className="text-black/60">Plat Nomor</div>
-          <div className="font-semibold">{data.metadata?.license_plate || "—"}</div>
         </div>
       </div>
 

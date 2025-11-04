@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import { useOnboarding } from "@/stores/onboarding";
 
-// tujuan baru (flow aset)
-const NEXT_ROUTE = "/setup/individu/assets/bangunan";
-
 export default function OnboardingIndividu() {
   const router = useRouter();
-  const { markOnboardingCompleted } = useOnboarding();
+  const { markOnboardingCompleted, assetsCompleted } = useOnboarding();
 
   function goNext() {
     markOnboardingCompleted();         // ⬅️ penting untuk guard langkah berikutnya
-    router.replace(NEXT_ROUTE);        // pakai replace biar nggak balik ke sini
+    
+    // Kalau assets sudah selesai, langsung ke app
+    if (assetsCompleted) {
+      router.replace("/app");
+    } else {
+      // Kalau belum, lanjut ke setup assets
+      router.replace("/setup/individu/assets/bangunan");
+    }
   }
 
   return (

@@ -1,10 +1,11 @@
 // src/app/(app)/app/catat/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
+import useAuth from "@/hooks/useAuth";
 
 import CategoryItem from "@/components/shared/catat/CategoryItem";
 import ReportRow from "@/components/shared/catat/ReportRow";
@@ -46,7 +47,9 @@ const INITIAL_REPORTS: SavedReport[] = [
 
 export default function CatatIndividuPage() {
   const router = useRouter();
-
+  const { getIdToken } = useAuth();
+  
+  const [totalThisMonth, setTotalThisMonth] = useState(0);
   // NOTE:
   // - Untuk melihat EMPTY STATE: ubah nilai awal ini menjadi [].
   const [reports] = useState<SavedReport[]>(INITIAL_REPORTS);
@@ -55,6 +58,48 @@ export default function CatatIndividuPage() {
     () => reports.reduce((sum, r) => sum + r.amount, 0),
     [reports]
   );
+
+  // Helper to get backend token
+  const getBackendToken = useCallback(async (): Promise<string | null> => {
+    const { authService } = await import("@/services/auth");
+    let backendToken = authService.getToken();
+    
+    if (!backendToken) {
+      const firebaseToken = await getIdToken();
+      if (!firebaseToken) return null;
+      
+      backendToken = await authService.loginWithGoogle(firebaseToken);
+      authService.saveToken(backendToken);
+    }
+    
+    return backendToken;
+  }, [getIdToken]);
+
+  // Fetch carbon footprint from backend
+  useEffect(() => {
+    async function fetchCarbonFootprint() {
+      try {
+        const token = await getBackendToken();
+        if (!token) {
+          console.warn("⚠️ No token available");
+          return;
+        }
+
+        const { reportsService } = await import("@/services/reports");
+        const data = await reportsService.getCurrentCarbonFootprint(token);
+        
+        console.log("📊 Carbon footprint data (Catat):", data);
+        
+        // Format: ambil 4 digit dari depan (pembulatan ke 1 desimal)
+        const current = Math.round(data.current_month_total_kgco2e * 10) / 10;
+        setTotalThisMonth(current);
+      } catch (error) {
+        console.error("❌ Failed to fetch carbon footprint:", error);
+      }
+    }
+
+    fetchCarbonFootprint();
+  }, [getBackendToken]);
 
   return (
     <main className="min-h-dvh bg-white text-black">
@@ -124,7 +169,7 @@ export default function CatatIndividuPage() {
         {/* Hasil Perhitungan */}
         <section className="mt-8 text-center">
           <h3 className="mb-3 text-base font-semibold">Hasil Perhitungan</h3>
-          <ResultCard value={total} />
+          <ResultCard value={totalThisMonth} />
         </section>
 
         {/* CTA ke Riwayat */}

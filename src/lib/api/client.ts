@@ -47,10 +47,9 @@ export async function fetchWithAuth<T>(
   try {
     if (endpoint.includes('electricity-tariffs')) {
       const masked = token ? `${String(token).slice(0, 8)}...` : 'none';
-      // eslint-disable-next-line no-console
       console.log(`[API DEBUG] Request: ${API_BASE_URL}${endpoint} Authorization: ${masked}`);
     }
-  } catch (e) {
+  } catch {
     // ignore logging errors
   }
 
@@ -61,23 +60,50 @@ export async function fetchWithAuth<T>(
   });
 
   if (!response.ok) {
+    // Clone response untuk bisa read body multiple times
+    const clonedResponse = response.clone();
+    
     // Try to get error details from response body
     let errorMessage = `API Error: ${response.status} ${response.statusText}`;
+    let errorDetails: string | undefined;
+    
     try {
       const errorJson = await response.json();
       console.error('❌ API Error Response:', errorJson);
+      
       if (errorJson.meta?.message) {
         errorMessage = `${errorMessage} - ${errorJson.meta.message}`;
+        errorDetails = errorJson.meta.message;
       }
+      
       // Log validation errors if available
       if (errorJson.errors) {
-        console.error('Validation Errors:', errorJson.errors);
+        console.error('❌ Validation Errors:', errorJson.errors);
+        errorDetails = JSON.stringify(errorJson.errors);
       }
-    } catch (e) {
-      // Response body tidak bisa di-parse sebagai JSON
-      console.error('❌ Raw error response:', await response.text());
+      
+      // Log any additional error info
+      if (errorJson.error) {
+        console.error('❌ Error Details:', errorJson.error);
+      }
+    } catch {
+      // Response body tidak bisa di-parse sebagai JSON, try text
+      try {
+        const errorText = await clonedResponse.text();
+        console.error('❌ Raw error response:', errorText);
+        if (errorText) {
+          errorDetails = errorText;
+        }
+      } catch {
+        // Ignore if already consumed
+      }
     }
-    throw new Error(errorMessage);
+    
+    const finalError = new Error(errorMessage);
+    // Attach details for debugging
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (finalError as any).details = errorDetails;
+    throw finalError;
   }
 
   const json: ApiResponse<T> = await response.json();

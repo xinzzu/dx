@@ -1,11 +1,12 @@
 // src/app/(app)/analisis/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import TrendChart from "@/components/shared/analisis/TrendChart";
 import DonutChart from "@/components/shared/analisis/DonutChart";
 import Button from "@/components/ui/Button";
+import useAuth from "@/hooks/useAuth";
 
 type Range = "month" | "year";
 
@@ -32,6 +33,69 @@ const categoryBreakdown = [
 
 export default function AnalisisPage() {
   const [range, setRange] = useState<Range>("month");
+  const { getIdToken } = useAuth();
+
+  // Carbon footprint data from backend
+  const [totalThisMonth, setTotalThisMonth] = useState(0);
+  const [previousMonth, setPreviousMonth] = useState(0);
+  const [changePct, setChangePct] = useState(0);
+  const [changeAbs, setChangeAbs] = useState(0);
+  const [loadingCarbon, setLoadingCarbon] = useState(true);
+
+  // Helper to get backend token
+  const getBackendToken = useCallback(async (): Promise<string | null> => {
+    const { authService } = await import("@/services/auth");
+    let backendToken = authService.getToken();
+    
+    if (!backendToken) {
+      const firebaseToken = await getIdToken();
+      if (!firebaseToken) return null;
+      
+      backendToken = await authService.loginWithGoogle(firebaseToken);
+      authService.saveToken(backendToken);
+    }
+    
+    return backendToken;
+  }, [getIdToken]);
+
+  // Fetch carbon footprint from backend
+  useEffect(() => {
+    async function fetchCarbonFootprint() {
+      try {
+        setLoadingCarbon(true);
+        const token = await getBackendToken();
+        if (!token) {
+          console.warn("⚠️ No token available");
+          setLoadingCarbon(false);
+          return;
+        }
+
+        const { reportsService } = await import("@/services/reports");
+        const data = await reportsService.getCurrentCarbonFootprint(token);
+        
+        console.log("📊 Carbon footprint data (Analisis):", data);
+        
+        // Format: ambil 4 digit dari depan (pembulatan ke 1 desimal)
+        const current = Math.round(data.current_month_total_kgco2e * 10) / 10;
+        const previous = Math.round(data.previous_month_total_kgco2e * 10) / 10;
+        
+        setTotalThisMonth(current);
+        setPreviousMonth(previous);
+        
+        // Calculate change percentage and absolute
+        if (data.comparison) {
+          setChangePct(data.comparison.difference_percent || 0);
+          setChangeAbs(Math.abs(Math.round(data.comparison.difference_kgco2e * 10) / 10));
+        }
+      } catch (error) {
+        console.error("❌ Failed to fetch carbon footprint:", error);
+      } finally {
+        setLoadingCarbon(false);
+      }
+    }
+
+    fetchCarbonFootprint();
+  }, [getBackendToken]);
 
   // ganti dataset sesuai tab (dummy dulu)
   const series = useMemo(() => {
@@ -46,10 +110,7 @@ export default function AnalisisPage() {
     ];
   }, [range]);
 
-  const totalThisMonth = 150; // dummy
-  const recordedDays = 20;
-  const changePct = -15;
-  const changeAbs = 26.5;
+  const recordedDays = 20; // TODO: Get from backend
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-4 pb-[88px]">
@@ -149,7 +210,7 @@ export default function AnalisisPage() {
                 {totalThisMonth}
               </div>
               <div className="text-sm text-black/70">
-                kg CO₂e · {recordedDays} hari tercatat
+                kg CO₂e
               </div>
             </div>
             <Button

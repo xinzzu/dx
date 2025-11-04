@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useAssetWizard } from "@/stores/assetWizard";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useUsage } from "@/stores/catat/usage";
 import Select from "@/components/ui/Select";
 import TextField from "@/components/ui/TextField";
 import Button from "@/components/ui/Button";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import useAuth from "@/hooks/useAuth";
+import { assetsService, BuildingResponse } from "@/services/assets";
 
 const CLEAN_TYPES = [
   { value: "solar", label: "Solar (PLTS)" },
@@ -17,9 +18,10 @@ const CLEAN_TYPES = [
 ];
 
 export default function CatatEnergiIndividuPage() {
-  const { buildings } = useAssetWizard();
   const { addEnergy } = useUsage();
   const router = useRouter();
+  const { getIdToken } = useAuth();
+  
   const [date, setDate] = useState("");
   const [buildingId, setBuildingId] = useState("");
   const [billCost, setBillCost] = useState("");
@@ -27,12 +29,52 @@ export default function CatatEnergiIndividuPage() {
   const [cleanType, setCleanType] = useState("");
   const [cleanKwh, setCleanKwh] = useState("");
 
+  // Fetch buildings from backend
+  const [buildings, setBuildings] = useState<BuildingResponse[]>([]);
+  const [loadingBuildings, setLoadingBuildings] = useState(true);
 
+  // Helper to get backend token
+  const getBackendToken = useCallback(async (): Promise<string | null> => {
+    const { authService } = await import("@/services/auth");
+    let backendToken = authService.getToken();
+    
+    if (!backendToken) {
+      const firebaseToken = await getIdToken();
+      if (!firebaseToken) return null;
+      
+      backendToken = await authService.loginWithGoogle(firebaseToken);
+      authService.saveToken(backendToken);
+    }
+    
+    return backendToken;
+  }, [getIdToken]);
+
+  // Fetch buildings on mount
+  useEffect(() => {
+    async function fetchBuildings() {
+      try {
+        setLoadingBuildings(true);
+        const token = await getBackendToken();
+        if (!token) return;
+        
+        const data = await assetsService.getBuildings(token);
+        setBuildings(data);
+      } catch (error) {
+        console.error("Failed to fetch buildings:", error);
+      } finally {
+        setLoadingBuildings(false);
+      }
+    }
+    fetchBuildings();
+  }, [getBackendToken]);
 
   const buildingOptions = useMemo(
     () => buildings.map((b) => ({ value: b.id, label: b.name })),
     [buildings]
   );
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const canSubmit =
     !!date &&
@@ -41,21 +83,62 @@ export default function CatatEnergiIndividuPage() {
     (useClean === undefined ||
       (useClean === true ? cleanType !== "" && Number(cleanKwh) >= 0 : true));
 
-  function handleSave() {
-    if (!canSubmit) return;
-    addEnergy({
-      date,
-      buildingId,
-      billCost: Number(billCost || 0),
-      useClean: useClean,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      cleanType: useClean ? (cleanType as any) : undefined,
-      cleanKwh: useClean ? Number(cleanKwh || 0) : undefined,
-    });
-    // reset ringan
-    setBillCost("0");
-    setCleanType("");
-    setCleanKwh("0");
+  async function handleSave() {
+    if (!canSubmit || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setSubmitError("");
+
+    try {
+      const token = await getBackendToken();
+      if (!token) {
+        setSubmitError("Token tidak ditemukan. Silakan login kembali.");
+        return;
+      }
+
+      const { reportsService } = await import("@/services/reports");
+
+      // Submit to backend
+      const payload = {
+        report_date: date,
+        building_asset_id: buildingId,
+        total_cost_rp: Number(billCost || 0),
+      };
+
+      console.log("📤 Submitting electricity report:", payload);
+      console.log("📝 Building ID:", buildingId);
+      console.log("💰 Bill Cost:", billCost, "->", Number(billCost || 0));
+      console.log("📅 Date:", date);
+      
+      const response = await reportsService.submitElectricityReport(payload, token);
+      console.log("✅ Report submitted successfully:", response);
+
+      // Save to local state (for offline/cache)
+      addEnergy({
+        date,
+        buildingId,
+        billCost: Number(billCost || 0),
+        useClean: useClean,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cleanType: useClean ? (cleanType as any) : undefined,
+        cleanKwh: useClean ? Number(cleanKwh || 0) : undefined,
+      });
+
+      // Reset form
+      setBillCost("0");
+      setCleanType("");
+      setCleanKwh("0");
+      setUseClean(undefined);
+
+      // Navigate back or show success message
+      router.back();
+    } catch (error) {
+      console.error("❌ Failed to submit report:", error);
+      const err = error as { message?: string };
+      setSubmitError(err.message || "Gagal menyimpan laporan. Silakan coba lagi.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -93,12 +176,16 @@ export default function CatatEnergiIndividuPage() {
           id="bangunan"
           label="Pilih bangunan terdaftar*"
           placeholder={
-            buildingOptions.length ? "Pilih Bangunan" : "Belum ada bangunan"
+            loadingBuildings 
+              ? "Memuat..." 
+              : buildingOptions.length 
+                ? "Pilih Bangunan" 
+                : "Belum ada bangunan"
           }
           options={buildingOptions}
           value={buildingId}
           onChange={(e) => setBuildingId(e.target.value)}
-          disabled={!buildingOptions.length}
+          disabled={loadingBuildings || !buildingOptions.length}
           required
         />
 
@@ -158,8 +245,19 @@ export default function CatatEnergiIndividuPage() {
           </>
         )}
 
-        <Button fullWidth size="lg" disabled={!canSubmit} onClick={handleSave}>
-          Simpan Data
+        {submitError && (
+          <div className="rounded-xl bg-red-50 border border-red-200 p-4">
+            <p className="text-sm text-red-600">{submitError}</p>
+          </div>
+        )}
+
+        <Button 
+          fullWidth 
+          size="lg" 
+          disabled={!canSubmit || isSubmitting} 
+          onClick={handleSave}
+        >
+          {isSubmitting ? "Menyimpan..." : "Simpan Data"}
         </Button>
       </div>
     </main>

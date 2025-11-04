@@ -112,6 +112,80 @@ export const assetsService = {
   },
 
   /**
+   * Create a building asset (direct from form)
+   * @param payload - Building payload
+   * @param token - Authentication token
+   * @returns Created building response
+   */
+  async createBuildingDirect(
+    payload: Partial<CreateBuildingPayload>,
+    token: string
+  ): Promise<BuildingResponse> {
+    console.log('🏢 Creating building with payload:', JSON.stringify(payload, null, 2));
+
+    return await fetchWithAuth<BuildingResponse>(
+      '/building-assets',
+      token,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  /**
+   * Update a building asset
+   * @param id - Building ID
+   * @param payload - Building payload
+   * @param token - Authentication token
+   * @returns Updated building response
+   */
+  async updateBuilding(
+    id: string,
+    payload: Partial<CreateBuildingPayload>,
+    token: string
+  ): Promise<BuildingResponse> {
+    console.log('🏢 Updating building with payload:', JSON.stringify(payload, null, 2));
+
+    return await fetchWithAuth<BuildingResponse>(
+      `/building-assets/${id}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  /**
+   * Delete a building asset
+   * @param id - Building ID
+   * @param token - Authentication token
+   */
+  async deleteBuilding(id: string, token: string): Promise<void> {
+    await fetchWithAuth<void>(
+      `/building-assets/${id}`,
+      token,
+      {
+        method: 'DELETE',
+      }
+    );
+  },
+
+  /**
+   * Get a single building asset
+   * @param id - Building ID
+   * @param token - Authentication token
+   * @returns Building response
+   */
+  async getBuilding(id: string, token: string): Promise<BuildingResponse> {
+    return await fetchWithAuth<BuildingResponse>(
+      `/building-assets/${id}`,
+      token
+    );
+  },
+
+  /**
    * Create a building asset
    * @param building - Building data from store
    * @param userId - User ID from backend

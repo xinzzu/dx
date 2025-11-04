@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import { useOnboarding } from "@/stores/onboarding";
 
-// tujuan baru (flow aset)
-const NEXT_ROUTE = "/setup/lembaga/assets/bangunan";
-
 export default function OnboardingLembaga() {
   const router = useRouter();
-  const { markOnboardingCompleted } = useOnboarding();
+  const { markOnboardingCompleted, assetsCompleted } = useOnboarding();
 
   function goNext() {
     markOnboardingCompleted();         // ⬅️ penting untuk guard
-    router.replace(NEXT_ROUTE);
+    
+    // Kalau assets sudah selesai, langsung ke lembaga dashboard
+    if (assetsCompleted) {
+      router.replace("/lembaga");
+    } else {
+      // Kalau belum, lanjut ke setup assets
+      router.replace("/setup/lembaga/assets/bangunan");
+    }
   }
 
   return (
