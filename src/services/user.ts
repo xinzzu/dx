@@ -1,0 +1,113 @@
+/**
+ * User Service
+ * Service untuk manage user profile dan data
+ */
+
+import { fetchWithAuth } from '@/lib/api/client';
+
+// === Type Definitions ===
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  phone_number: string | null;
+  user_type: 'individu' | 'lembaga' | null;
+  province: string | null;
+  city: string | null;
+  district: string | null;
+  sub_district: string | null;
+  is_profile_complete: boolean;
+  is_asset_buildings_completed: boolean;
+  is_asset_vehicles_completed: boolean;
+  active: boolean;
+}
+
+export interface UpdateProfilePayload {
+  name?: string;
+  phone_number?: string;
+  user_type?: 'individu' | 'lembaga';
+  province?: string;
+  city?: string;
+  district?: string;
+  sub_district?: string;
+  postal_code?: string;
+  active?: boolean;
+  is_profile_complete?: boolean;
+  is_asset_buildings_completed?: boolean;
+  is_asset_vehicles_completed?: boolean;
+}
+
+// === User Service ===
+
+export const userService = {
+  /**
+   * Get current user profile
+   * @param token - Authentication token
+   * @returns User profile data
+   */
+  async getMe(token: string): Promise<UserProfile> {
+    return fetchWithAuth<UserProfile>('/user/me', token);
+  },
+
+  /**
+   * Update user profile (complete profile)
+   * @param payload - Profile data to update
+   * @param token - Authentication token
+   * @returns Updated user profile
+   */
+  async updateProfile(payload: UpdateProfilePayload, token: string): Promise<UserProfile> {
+    return fetchWithAuth<UserProfile>('/user/', token, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },  
+
+  /**
+   * Check if user profile is complete
+   * @param user - User profile data
+   * @returns true if profile is complete
+   */
+  isProfileComplete(user: UserProfile): boolean {
+    return !!(
+      user.phone_number &&
+      user.user_type &&
+      user.province &&
+      user.city &&
+      user.district &&
+      user.sub_district
+      // Note: 'active' is for soft-delete, not profile completion
+    );
+  },
+
+  /**
+   * Check if user has completed building assets
+   * @param user - User profile data
+   * @returns true if building assets are completed
+   */
+  isBuildingAssetsComplete(user: UserProfile): boolean {
+    return user.is_asset_buildings_completed;
+  },
+
+  /**
+   * Check if user has completed vehicle assets
+   * @param user - User profile data
+   * @returns true if vehicle assets are completed
+   */
+  isVehicleAssetsComplete(user: UserProfile): boolean {
+    return user.is_asset_vehicles_completed;
+  },
+
+  /**
+   * Check if user has completed all onboarding steps
+   * (profile + buildings + vehicles)
+   * @param user - User profile data
+   * @returns true if all onboarding is complete
+   */
+  isOnboardingComplete(user: UserProfile): boolean {
+    return (
+      user.is_profile_complete &&
+      user.is_asset_buildings_completed &&
+      user.is_asset_vehicles_completed
+    );
+  },
+};

@@ -1,0 +1,21 @@
+:root {
+  /* brand */
+  --color-primary:  #04BF68;  /* Primary */
+  --color-secondary:#BBEED6;  /* Secondary */
+  --color-danger:   #FF0000;  /* Danger */
+  --color-background:#EFEFEF;  /* Background */
+  --color-background-card:#4FD295;  /* Background Card */
+  /* optional neutrals (kalau butuh) */
+  --color-black:    #0A0A0C;
+  --color-white:    #FFFFFF;
+  --color-gray-600: #6B7280;  /* abu muda */
+  --color-gray-800: #404040;  /* gray */
+}
+
+/* (opsional) tema gelap */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* bisa tweak jika perlu kontras lebih pas */
+    --color-secondary:#9FE7C8;
+  }
+}
