@@ -8,6 +8,7 @@ import EmptyState from "@/features/assets/EmptyState"
 import ManageBuildingList from "@/features/assets/profile/buidling/ManageBuildingList"
 import { assetsService, BuildingResponse } from "@/services/assets"
 import useAuth from "@/hooks/useAuth"
+import ScrollContainer from "@/components/nav/ScrollContainer"
 
 export default function Page() {
   const router = useRouter()
@@ -20,15 +21,15 @@ export default function Page() {
   const getBackendToken = useCallback(async (): Promise<string | null> => {
     const { authService } = await import("@/services/auth");
     let backendToken = authService.getToken();
-    
+
     if (!backendToken) {
       const firebaseToken = await getIdToken();
       if (!firebaseToken) return null;
-      
+
       backendToken = await authService.loginWithGoogle(firebaseToken);
       authService.saveToken(backendToken);
     }
-    
+
     return backendToken;
   }, [getIdToken]);
 
@@ -41,8 +42,9 @@ export default function Page() {
         setError("No authentication token")
         return
       }
-      
+
       const data = await assetsService.getBuildings(token)
+
       setBuildings(data)
     } catch (err) {
       console.error("Failed to fetch buildings:", err)
@@ -57,25 +59,18 @@ export default function Page() {
   }, [fetchBuildings])
 
   return (
-    <main className="mx-auto max-w-screen-sm px-4 pb-28">
-      {/* Header ala kamu */}
-      <header className="mb-3 flex items-center gap-2">
-        <button
-          onClick={() => router.back()}
-          aria-label="Kembali"
-          className="grid h-9 w-9 place-items-center"
-        >
-          <Image src="/arrow-left.svg" alt="" width={18} height={18} />
-        </button>
-        <h1 className="flex-1 text-center text-lg font-semibold">
-          Aset Bangunan Anda
-        </h1>
-        <div className="h-9 w-9" />
-      </header>
-      <div
-        className="mx-auto mt-3 h-0.5 w-full"
-        style={{ backgroundColor: "var(--color-primary)" }}
-      />
+     <ScrollContainer
+                 headerTitle="Atur Bangunan"
+                 leftContainer={
+                   <button
+                     onClick={() => router.back()}
+                     aria-label="Kembali"
+                     className="h-9 w-9 grid place-items-center"
+                   >
+                     <Image src="/arrow-left.svg" alt="" width={18} height={18} />
+                   </button>
+                 }
+               >
 
       {/* List / Empty */}
       <div className="mt-4">
@@ -86,8 +81,8 @@ export default function Page() {
         ) : buildings.length === 0 ? (
           <EmptyState variant="building" text="Belum ada bangunan. Tambahkan terlebih dahulu." />
         ) : (
-          <ManageBuildingList 
-            buildings={buildings} 
+          <ManageBuildingList
+            buildings={buildings}
             baseEditPath="/app/profile/manajemen-bangunan"
             onRefresh={fetchBuildings}
           />
@@ -100,6 +95,6 @@ export default function Page() {
           + Tambah Bangunan
         </Button>
       </div>
-    </main>
+    </ScrollContainer>
   )
 }

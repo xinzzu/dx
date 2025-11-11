@@ -1,139 +1,83 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import HeaderBar from "@/components/shared/home/HeaderBar";
 import CarbonTotalCard from "@/components/shared/home/CarbonTotalCard";
-import BadgeCard from "@/components/shared/home/BadgeCard";
-import InspirationSection from "@/components/shared/home/InspirationSection";
 import FirstShortcutCard from "@/components/shared/home/FirstShortcutCard";
-import { useOnboarding } from "@/stores/onboarding";
+import InspirationSection from "@/components/shared/home/InspirationSection";
+import useAuth from "@/hooks/useAuth";
 import { authService } from "@/services/auth";
 
 export default function HomePage() {
-  const [name, setName] = useState("John Doe");
-  const [total, setTotal] = useState(0);
-  const [loadingCarbon, setLoadingCarbon] = useState(true);
-  
-  const { replayFirstShortcut } = useOnboarding();
+  const router = useRouter();
+  const { currentUser, getIdToken } = useAuth();
+  const [totalCarbonKg, setTotalCarbonKg] = useState(0);
+  const [userName, setUserName] = useState("Pengguna");
 
-  // Fetch user name from backend
+  const getBackendToken = useCallback(async () => {
+    let backendToken = authService.getToken();
+    if (!backendToken && currentUser) {
+      const firebaseIdToken = await getIdToken();
+      if (firebaseIdToken) {
+        backendToken = await authService.loginWithGoogle(firebaseIdToken);
+        authService.saveToken(backendToken);
+      }
+    }
+    return backendToken;
+  }, [currentUser, getIdToken]);
+
+  // Fetch user data and carbon footprint
   useEffect(() => {
-    async function fetchUserName() {
+    async function loadData() {
       try {
-        const token = authService.getToken();
+        const token = await getBackendToken();
         if (!token) return;
 
+        // Get user info
         const { userService } = await import("@/services/user");
-        const userData = await userService.getMe(token!);
-        
-        // For individu: use individual_profile.full_name
-        // For lembaga: use institution_profile.name
-        let displayName = ""; // fallback
-        
-        if (userData.user_type === "individu" && userData.individual_profile?.full_name) {
-          displayName = userData.individual_profile.full_name;
-        } else if (userData.user_type === "lembaga" && userData.institution_profile?.name) {
-          displayName = userData.institution_profile.name;
-        }
-        
-        setName(displayName);
-        
-        // Save to localStorage for faster load next time
-        localStorage.setItem("profile.name", displayName);
-      } catch (error) {
-        console.error("❌ Failed to fetch user name:", error);
-        // Try to load from localStorage as fallback
-        const nm = localStorage.getItem("profile.name");
-        if (nm) setName(nm);
-      }
-    }
+        const userData = await userService.getMe(token);
+        setUserName(userData?.individual_profile?.full_name || userData?.email || "Pengguna");
 
-    fetchUserName();
-  }, []);
-
-  // Fetch carbon footprint from backend
-  useEffect(() => {
-    async function fetchCarbonFootprint() {
-      // First, load from localStorage immediately
-      const sm = localStorage.getItem("summary:last");
-      if (sm) {
-        try {
-          const p = JSON.parse(sm);
-          if (typeof p?.totalKg === "number") setTotal(p.totalKg);
-        } catch {}
-      }
-
-      // Then fetch from backend to update
-      try {
-        setLoadingCarbon(true);
-        const token = authService.getToken();
-        if (!token) return;
-
+        // Get carbon footprint
         const { reportsService } = await import("@/services/reports");
-        const data = await reportsService.getCurrentCarbonFootprint(token!);
-        
-        console.log("📊 Carbon footprint data:", data);
-        
-        // Format: ambil 4 digit dari depan (pembulatan ke 4 digit signifikan)
-        const rawTotal = data.current_month_total_kgco2e;
-        const formattedTotal = Math.round(rawTotal * 10) / 10; // 1 decimal place
-        
-        setTotal(formattedTotal);
-
-        // Save to localStorage for next time
-        localStorage.setItem("summary:last", JSON.stringify({
-          totalKg: formattedTotal,
-          previousKg: data.previous_month_total_kgco2e,
-          comparison: data.comparison,
-        }));
+        const carbonData = await reportsService.getCurrentCarbonFootprint(token);
+        const current = Math.round(carbonData.current_month_total_kgco2e * 10) / 10;
+        setTotalCarbonKg(current);
       } catch (error) {
-        const err = error as { message?: string };
-        
-        // Jika 404, kemungkinan endpoint belum tersedia atau belum ada data
-        if (err.message?.includes("404")) {
-          console.warn("⚠️ Carbon footprint endpoint not found (404). This is normal if you haven't submitted any reports yet.");
-        } else {
-          console.error("❌ Failed to fetch carbon footprint:", error);
-        }
-        
-        // Keep using localStorage data (already loaded above)
-      } finally {
-        setLoadingCarbon(false);
+        console.error("Failed to load home data:", error);
       }
     }
 
-    fetchCarbonFootprint();
-  }, []);
+    loadData();
+  }, [getBackendToken]);
 
-  const articles = [
+  const sampleArticles = [
     {
       id: 1,
-      title: "5 Cara Jitu Hemat Listrik Saat WFH",
-      description: "Tips mudah agar tagihan listrikmu aman selama kerja dari rumah.",
+      title: "5 Cara Mudah Mengurangi Jejak Karbon",
+      description: "Tips praktis untuk hidup lebih ramah lingkungan",
       bannerSrc: "/images/banner.png",
     },
   ];
 
   return (
-    <main>
-      <HeaderBar name={name} onBellClick={() => { /* TODO: open notifications */ }} />
+    <main className="min-h-dvh bg-white text-black">
+      <div className="mx-auto max-w-lg px-4 pb-[88px] pt-4">
+        <HeaderBar
+          name={userName}
+          onBellClick={() => console.log("Notifikasi clicked")}
+        />
 
-      <CarbonTotalCard totalKg={total} />
+        <CarbonTotalCard totalKg={totalCarbonKg} />
 
-      {/* <BadgeCard
-        title='Lencana “Jalur Hijau”'
-        subtitle="Menggunakan transportasi umum hari ini"
-        footer={`Bulan ini: Total ${total} kg CO₂e`}
-      /> */}
+        <FirstShortcutCard totalKg={totalCarbonKg} />
 
-      {/* Muncul sekali setelah aset selesai */}
-      <FirstShortcutCard/>
-      {/* <button onClick={replayFirstShortcut}>Replay First Shortcut</button> */}
-
-      <InspirationSection
-        articles={articles}
-        onSeeAll={() => { /* TODO: route to /app/inspirasi */ }}
-      />
+        <InspirationSection
+          articles={sampleArticles}
+          onSeeAll={() => router.push("/app/inspirasi")}
+        />
+      </div>
     </main>
   );
 }

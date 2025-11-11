@@ -39,6 +39,7 @@ export interface UserProfile {
 
 export interface UpdateProfilePayload {
   name?: string;
+  email?: string;
   phone_number?: string;
   user_type?: 'individu' | 'lembaga';
   province?: string;
@@ -46,6 +47,7 @@ export interface UpdateProfilePayload {
   district?: string;
   sub_district?: string;
   postal_code?: string;
+  address?: string;
   active?: boolean;
   is_profile_complete?: boolean;
   is_asset_buildings_completed?: boolean;
@@ -54,6 +56,16 @@ export interface UpdateProfilePayload {
   gender?: 'male' | 'female';
   // Lembaga-specific fields
   institution_type?: string;
+  // Nested profiles (optional) - allow sending nested profile objects
+  individual_profile?: {
+    full_name?: string;
+    gender?: 'male' | 'female';
+    active?: boolean;
+  };
+  institution_profile?: {
+    name?: string;
+    active?: boolean;
+  };
 }
 
 // === User Service ===
@@ -74,25 +86,30 @@ export const userService = {
    * @param token - Authentication token
    * @returns Created user profile
    */
-  async createProfile(payload: UpdateProfilePayload, token: string): Promise<UserProfile> {
+    async createProfile(payload: UpdateProfilePayload, token: string): Promise<UserProfile> {
+    // Use /user/me to update the current authenticated user's profile. Some
+    // backend deployments expect PUT on /user/me rather than /user/ for
+    // self-updates; use this endpoint to avoid 403s caused by admin-only
+    // /user/ endpoints.
     return fetchWithAuth<UserProfile>('/user/', token, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
   },
 
-  /**
+  /** 
    * Update user profile (edit existing profile)
    * @param payload - Profile data to update
    * @param token - Authentication token
    * @returns Updated user profile
    */
-  async updateProfile(payload: UpdateProfilePayload, token: string): Promise<UserProfile> {
-    return fetchWithAuth<UserProfile>('/user/me', token, {
+    async updateProfile(payload: UpdateProfilePayload, token: string): Promise<UserProfile> {
+    // Mirror createProfile: update current user's profile via /user/me
+    return fetchWithAuth<UserProfile>('/user/', token, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
-  },  
+  },
 
   /**
    * Check if user profile is complete

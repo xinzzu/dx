@@ -10,7 +10,7 @@ import useAuth from "@/hooks/useAuth";
 import { assetsService, BuildingResponse } from "@/services/assets";
 
 export default function BangunanPage() {
-  const { buildings, addBuilding } = useAssetWizard();
+  const { buildings, addBuilding, reset } = useAssetWizard();
   const { getIdToken } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,7 @@ export default function BangunanPage() {
         }
 
         const apiBuildings = await assetsService.getBuildings(token);
-        
+
         // Convert API buildings to store format and add to store
         // Only add if store is empty (avoid duplicates on re-render)
         if (buildings.length === 0 && apiBuildings.length > 0) {

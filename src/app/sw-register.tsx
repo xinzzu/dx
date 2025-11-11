@@ -15,7 +15,6 @@
 //   return null;
 // }
 
-// src/app/sw-register.tsx
 "use client";
 import { useEffect } from "react";
 

@@ -4,6 +4,8 @@
 import { useRouter } from "next/navigation";
 import BadgeCard from "@/components/shared/profile/BadgeCard";
 import { ALL_BADGES, OWNED_BADGE_IDS } from "@/data/badge";
+import ScrollContainer from "@/components/nav/ScrollContainer";
+import Image from "next/image";
 
 export default function BadgesCollectionPage() {
   const router = useRouter();
@@ -12,24 +14,18 @@ export default function BadgesCollectionPage() {
   const others = ALL_BADGES.filter(b => !OWNED_BADGE_IDS.includes(b.id));
 
   return (
-    <main className="min-h-dvh bg-white text-black">
-      <div className="mx-auto max-w-lg px-4 pb-6 pt-4">
-
-        {/* Header custom: judul center tanpa mengubah SectionTitle */}
-        <div className="relative mb-2">
-          <button
-            onClick={() => router.back()}
-            aria-label="Kembali"
-            className="absolute left-0 top-1/2 -translate-y-1/2 grid h-9 w-9 place-items-center rounded-xl hover:bg-black/5"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M15 19L8 12L15 5" stroke="currentColor" strokeWidth="2"
-                    strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          <h2 className="text-center text-base font-semibold">Koleksi Lencana</h2>
-        </div>
-        <div className="mb-2 h-[2px] w-full rounded" style={{ backgroundColor: "var(--color-primary)" }} />
+     <ScrollContainer
+                   headerTitle="Koleksi Lencana"
+                   leftContainer={
+                     <button
+                       onClick={() => router.back()}
+                       aria-label="Kembali"
+                       className="h-9 w-9 grid place-items-center"
+                     >
+                       <Image src="/arrow-left.svg" alt="" width={18} height={18} />
+                     </button>
+                   }
+                 >
 
         {/* Lencana dimiliki */}
         <h3 className="mt-4 mb-2 text-[15px] font-semibold">Lencana dimiliki</h3>
@@ -46,7 +42,7 @@ export default function BadgesCollectionPage() {
             <BadgeCard key={b.id} iconSrc={b.icon} title={b.title} desc={b.desc} />
           ))}
         </div>
-      </div>
-    </main>
+      
+    </ScrollContainer>
   );
 }

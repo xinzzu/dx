@@ -8,6 +8,7 @@ import EmptyState from "@/features/assets/EmptyState"
 import ManageVehicleList from "@/features/assets/profile/vehicle/ManageVehicleList"
 import { assetsService, VehicleResponse } from "@/services/assets"
 import useAuth from "@/hooks/useAuth"
+import ScrollContainer from "@/components/nav/ScrollContainer"
 
 export default function Page() {
   const router = useRouter()
@@ -27,8 +28,13 @@ export default function Page() {
           return
         }
         
-        const data = await assetsService.getVehicles(token)
-        setVehicles(data)
+        // Use assetsService which calls /me/vehicle-assets under the hood
+        const data = await assetsService.getVehicles(token);
+
+        // Deduplicate backend response by id in case backend returns duplicates
+        const deduped = Array.from(new Map((data || []).map((v) => [v.id, v])).values())
+        console.log('Fetched vehicles (deduped):', deduped.length, data?.length)
+        setVehicles(deduped)
       } catch (err) {
         console.error("Failed to fetch vehicles:", err)
         setError(err instanceof Error ? err.message : "Failed to load vehicles")
@@ -41,25 +47,18 @@ export default function Page() {
   }, [getIdToken])
 
   return (
-    <main className="mx-auto max-w-screen-sm px-4 pb-28">
-      {/* Header */}
-      <header className="mb-3 flex items-center gap-2">
-        <button
-          onClick={() => router.back()}
-          aria-label="Kembali"
-          className="grid h-9 w-9 place-items-center"
-        >
-          <Image src="/arrow-left.svg" alt="" width={18} height={18} />
-        </button>
-        <h1 className="flex-1 text-center text-lg font-semibold">
-          Aset Kendaraan Anda
-        </h1>
-        <div className="h-9 w-9" />
-      </header>
-      <div
-        className="mx-auto mt-3 h-0.5 w-full"
-        style={{ backgroundColor: "var(--color-primary)" }}
-      />
+    <ScrollContainer
+                headerTitle="Atur Kendaraan"
+                leftContainer={
+                  <button
+                    onClick={() => router.back()}
+                    aria-label="Kembali"
+                    className="h-9 w-9 grid place-items-center"
+                  >
+                    <Image src="/arrow-left.svg" alt="" width={18} height={18} />
+                  </button>
+                }
+              >
 
       {/* Body */}
       <div className="mt-4">
@@ -70,16 +69,20 @@ export default function Page() {
         ) : vehicles.length === 0 ? (
           <EmptyState variant="vehicle" text="Belum ada kendaraan. Tambahkan terlebih dahulu." />
         ) : (
-          <ManageVehicleList vehicles={vehicles} baseEditPath="/app/profile/manajemen-kendaraan" />
+          <ManageVehicleList
+            vehicles={vehicles}
+            baseEditPath="/app/profile/manajemen-kendaraan"
+            onDeleted={(id: string) => setVehicles(prev => prev.filter(v => v.id !== id))}
+          />
         )}
       </div>
 
       {/* CTA */}
       <div className="sticky bottom-6 mt-6">
-        <Button size="lg" fullWidth onClick={() => router.push("/app/profile/kendaraan/new")}>
+        <Button size="lg" fullWidth onClick={() => router.push("/app/profile/manajemen-kendaraan/new")}>
           Tambah Kendaraan
         </Button>
       </div>
-    </main>
+    </ScrollContainer>
   )
 }

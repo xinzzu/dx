@@ -18,6 +18,16 @@ export interface VehicleEmissionFactor {
   active: boolean;
 }
 
+// Fuel product returned by backend
+export interface FuelProduct {
+  id: string;
+  product_name: string;
+  fuel_type: string;
+  unit?: string;
+  active?: boolean;
+  [key: string]: unknown;
+}
+
 // === Vehicle Service ===
 
 export const vehicleService = {
@@ -107,5 +117,15 @@ export const vehicleService = {
   ): Promise<VehicleEmissionFactor | undefined> {
     const allFactors = await this.getAllFactors(token);
     return allFactors.find((f) => f.id === factorId);
+  },
+
+  /**
+   * Get vehicle fuel products from backend
+   * @param token - Authentication token
+   * @returns Array of fuel product objects
+   */
+  async getFuelProducts(token: string): Promise<FuelProduct[]> {
+    // Backend provides /vehicle-fuel-products
+    return await fetchWithAuth<FuelProduct[]>(`/vehicle-fuel-products`, token);
   },
 };

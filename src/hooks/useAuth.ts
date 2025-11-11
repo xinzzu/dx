@@ -1,11 +1,74 @@
-// src/hooks/useAuth.ts
+// useAuth.ts
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { auth, googleProvider } from "@/services/firebase";
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, User, getRedirectResult } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  User,
+  getRedirectResult,
+  type UserCredential,
+} from "firebase/auth";
 import { authService } from "@/services/auth";
 import { useOnboarding } from "@/stores/onboarding";
+import { useAssetWizard } from "@/stores/assetWizard";
+import { userService } from "@/services/user";
+import { useUsage } from "@/stores/catat/usage";
+
+type IDBFactoryWithDatabases = IDBFactory & {
+  databases?: () => Promise<Array<{ name?: string }>>;
+};
+
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
+async function processLoginSuccess(cred: UserCredential, backendAccessToken?: string) {
+  const token = backendAccessToken || await cred.user.getIdToken(true);
+
+  if (!token) {
+    throw new Error("Firebase ID Token not available after successful login.");
+  }
+
+  const finalBackendAccessToken = await authService.loginWithGoogle(token);
+  authService.saveToken(finalBackendAccessToken);
+
+  useOnboarding.getState().resetOnboarding();
+  useAssetWizard.getState().reset();
+  useOnboarding.getState().markActivated();
+
+  try {
+    const profile = await userService.getMe(finalBackendAccessToken);
+
+    if (profile.is_profile_complete) {
+      useOnboarding.getState().markProfileCompleted();
+    }
+
+    if (profile.is_asset_buildings_completed) {
+      useOnboarding.getState().markAssetsBuildingsCompleted();
+    }
+
+    if (profile.is_asset_vehicles_completed) {
+      useOnboarding.getState().markAssetsVehiclesCompleted();
+    }
+
+    if (profile.is_asset_buildings_completed && profile.is_asset_vehicles_completed) {
+      useOnboarding.getState().markAssetsCompleted();
+    }
+
+  } catch (e: unknown) {
+    console.warn("Failed to sync profile after login. User will start onboarding locally.", getErrorMessage(e));
+  }
+}
 
 type UseAuthReturn = {
   currentUser: User | null;
@@ -19,28 +82,27 @@ export default function useAuth(): UseAuthReturn {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Handle redirect result from Google OAuth
   useEffect(() => {
     const handleRedirectResult = async () => {
+      if (typeof window === "undefined") return;
+
       try {
+        setLoading(true);
         const result = await getRedirectResult(auth);
-        if (result && result.user) {
-          // User just came back from redirect
-          const firebaseIdToken = await result.user.getIdToken(true);
-          
-          // Send to backend & save token
-          const backendAccessToken = await authService.loginWithGoogle(firebaseIdToken);
-          authService.saveToken(backendAccessToken);
-          
-          // Mark as activated for Google login
-          useOnboarding.getState().markActivated();
+
+        if (result?.user) {
+          await processLoginSuccess(result);
         }
-      } catch (error) {
-        console.error("Redirect result error:", error);
+      } catch (error: unknown) {
+        console.error("Redirect result error:", getErrorMessage(error));
+        authService.removeToken();
+        setCurrentUser(null);
+      } finally {
+        setLoading(false);
       }
     };
 
-    handleRedirectResult();
+    void handleRedirectResult();
   }, []);
 
   useEffect(() => {
@@ -54,92 +116,117 @@ export default function useAuth(): UseAuthReturn {
   const googleLogin = useCallback(async () => {
     setLoading(true);
     try {
-      // tandai provider agar routing tahu ini via Google
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("login_via", "google");
+      if (typeof window === "undefined") return;
+      sessionStorage.setItem("login_via", "google");
+
+      const cred = await signInWithPopup(auth, googleProvider);
+
+      await processLoginSuccess(cred);
+
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
+
+      if (msg.includes("popup-closed-by-user") || msg.includes("cancelled-popup-request")) {
+        console.log("Login popup closed by user, login dibatalkan.");
+        setLoading(false);
+        return;
       }
 
-      // jika environment ter-isolate (COOP/COEP), pakai redirect
-      const canUsePopup = typeof window !== "undefined" && !window.crossOriginIsolated;
+      console.warn("Popup failed or blocked, attempting Redirect fallback. Error:", msg);
 
-      if (canUsePopup) {
-        try {
-          // 1. Login via Firebase
-          const cred = await signInWithPopup(auth, googleProvider);
-          
-          // 2. Mark activated IMMEDIATELY (BEFORE exchange token)
-          // Prevent race condition dengan RequireProgress guard
-          if (typeof window !== "undefined") {
-            sessionStorage.setItem("login_via", "google");
-          }
-          useOnboarding.getState().markActivated();
-          
-          // 3. Get Firebase ID Token
-          const firebaseIdToken = await cred.user.getIdToken(true);
-
-          // 4. Send Firebase ID Token to backend → get access_token
-          const backendAccessToken = await authService.loginWithGoogle(firebaseIdToken);
-          
-          // 5. Save backend access token
-          authService.saveToken(backendAccessToken);
-        } catch (error) {
-          console.error("Google login error:", error);
-          
-          // Check if user cancelled the popup
-          if (error instanceof Error && 
-              (error.message.includes("popup-closed-by-user") || 
-               error.message.includes("cancelled-popup-request"))) {
-            console.log("User cancelled Google login popup");
-            // Redirect back to login page
-            if (typeof window !== "undefined") {
-              window.location.href = "/auth/login";
-            }
-            return; // Exit early, don't fallback to redirect
-          }
-          
-          // For other errors, fallback to redirect
-          await signInWithRedirect(auth, googleProvider);
-        }
-      } else {
+      try {
         await signInWithRedirect(auth, googleProvider);
+      } catch (e: unknown) {
+        console.error("Fallback redirect failed:", getErrorMessage(e));
+        authService.removeToken();
+        setCurrentUser(null);
       }
+
     } finally {
-      // biarkan loading dirilis oleh onAuthStateChanged setelah login selesai
-      setLoading(false);
+      if (currentUser === null) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [currentUser]);
 
   const logout = useCallback(async () => {
     setLoading(true);
     try {
-      // Sign out from Firebase
-      await signOut(auth);
-      
-      // Remove backend access token
+      try {
+        await signOut(auth);
+      } catch {
+        /* ignore */
+      }
       authService.removeToken();
-      
-      // Reset onboarding store (clear activated, profileCompleted, etc)
+
       useOnboarding.getState().resetOnboarding();
-      
-      // Clear session storage
+      useAssetWizard.getState().reset();
+      try {
+        const state = (useUsage as unknown as { getState: () => { reset?: () => void } }).getState();
+        state.reset?.();
+      } catch {
+        /* ignore missing reset */
+      }
+
       if (typeof window !== "undefined") {
-        sessionStorage.removeItem("login_via");
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch { /* ignore */ }
+
+        try {
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+        } catch (e: unknown) { console.warn("Clear caches failed:", getErrorMessage(e)); }
+
+        try {
+          if ("serviceWorker" in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+          }
+        } catch (e: unknown) { console.warn("Unregister SW failed:", getErrorMessage(e)); }
+
+        try {
+          const idb = indexedDB as IDBFactoryWithDatabases;
+          if (typeof idb.databases === "function") {
+            const dbs = await idb.databases();
+            await Promise.all(
+              dbs.map(
+                (db) =>
+                  new Promise<void>((resolve) => {
+                    if (!db?.name) return resolve();
+                    const req = indexedDB.deleteDatabase(db.name);
+                    req.onsuccess = () => resolve();
+                    req.onerror = () => resolve();
+                    req.onblocked = () => resolve();
+                  }),
+              ),
+            );
+          }
+        } catch (e: unknown) { console.warn("IndexedDB wipe skipped:", getErrorMessage(e)); }
       }
     } finally {
       setLoading(false);
     }
   }, []);
 
-  /**
-   * Get Access Token for backend API authentication
-   * @returns Backend access token or null if not authenticated
-   */
   const getIdToken = useCallback(async (): Promise<string | null> => {
-    // ONLY return backend access token from localStorage
-    // DO NOT try to exchange Firebase token automatically
-    // That should only happen during explicit login flow
+    // Prefer the canonical token stored by authService.saveToken()
     const backendToken = authService.getToken();
-    return backendToken;
+    if (backendToken) return backendToken;
+
+    // Fallback: some flows (older code paths) may have saved the token under
+    // a different key (e.g. 'backend_token') — check those as a fallback so
+    // callers that rely on getIdToken() (profile save, area lookups) still
+    // receive a usable token.
+    if (typeof window !== "undefined") {
+      const fallback = localStorage.getItem("backend_token") || localStorage.getItem("access_token");
+      if (fallback) return fallback;
+    }
+
+    return null;
   }, []);
 
   return { currentUser, loading, googleLogin, logout, getIdToken };

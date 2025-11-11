@@ -84,24 +84,60 @@ export const areaService = {
    * @returns Array of villages
    */
   async getVillages(districtCode: string, token?: string | null): Promise<Village[]> {
-    let normalizedCode = districtCode;
-    
-    // Fix 1: API expects "id" prefix. Add it if code is numeric
-    if (/^\d+$/.test(normalizedCode)) {
-      normalizedCode = `id${normalizedCode}`;
+    // Build a list of candidate codes to try, ordered by most-likely
+    const candidates: string[] = [];
+
+    // Raw input first
+    candidates.push(districtCode);
+
+    // If purely numeric, try prefixing with 'id'
+    if (/^\d+$/.test(districtCode)) {
+      candidates.push(`id${districtCode}`);
     }
-    
-    // Fix 2: Backend may save 7-digit district code but API expects 8-digit
-    // Convert "id5102040" to "id51020400" or "5102040" to "id51020400"
-    if (/^id\d{7}$/.test(normalizedCode)) {
-      normalizedCode = normalizedCode + '0';
+
+    // If starts with 'id' and has 7 digits after, try appending a trailing zero (7->8)
+    if (/^id\d{7}$/.test(districtCode)) {
+      candidates.push(districtCode + '0');
     }
-    
-    if (normalizedCode !== districtCode) {
-      console.log(`🔧 Normalized district code: ${districtCode} → ${normalizedCode}`);
+
+    // If numeric 7-digit, try appending a zero and prefixed variants
+    if (/^\d{7}$/.test(districtCode)) {
+      candidates.push(districtCode + '0');
+      candidates.push(`id${districtCode}0`);
     }
-    
-    const result = await fetchWithAuth<Village[] | null>(`/area/villages/${normalizedCode}`, token);
-    return result || []; // Return empty array if null
+
+    // If starts with id + 8 digits, also try the version without trailing zero
+    if (/^id\d{8}$/.test(districtCode)) {
+      candidates.push(districtCode.slice(0, -1));
+      candidates.push(districtCode.replace(/^id/, ''));
+    }
+
+    // If starts with 'id', also try raw numeric without prefix
+    if (/^id\d+$/.test(districtCode)) {
+      candidates.push(districtCode.replace(/^id/, ''));
+    }
+
+    // Dedupe while preserving order
+    const uniqueCandidates = Array.from(new Set(candidates));
+
+    // Try each candidate until we get a non-empty response
+    for (const cand of uniqueCandidates) {
+      try {
+        if (cand !== districtCode) {
+          console.log(`🔧 Trying village lookup with candidate: ${districtCode} -> ${cand}`);
+        } else {
+          console.log(`🔎 Loading villages for district code: ${cand}`);
+        }
+        const result = await fetchWithAuth<Village[] | null>(`/area/villages/${cand}`, token);
+        const arr = result || [];
+        console.log(`🔁 Received ${arr.length} villages for code ${cand}`);
+        if (arr.length > 0) return arr;
+      } catch (err) {
+        console.warn(`Request for /area/villages/${cand} failed:`, err);
+      }
+    }
+
+    // Nothing worked — return empty array
+    return [];
   },
 };

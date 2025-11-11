@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
+import { authService } from "@/services/auth";
 import Button from "@/components/ui/Button";
 import Divider from "@/components/ui/Divider";
 import PhoneInput from "@/components/ui/PhoneInput";
@@ -52,17 +53,44 @@ export default function LoginPage() {
 
   const canSubmit = useMemo(() => phone.replace(/\D/g, "").length >= 9, [phone]);
 
-  const submitPhone = (e: React.FormEvent) => {
+  const submitPhone = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr("");
     if (!canSubmit) return setErr("Nomor WhatsApp minimal 9 digit");
     setLoadingPhone(true);
-    const e164 = toE164FromLocal62(phone);
-    const q = new URLSearchParams({ mode: "login", phone: e164 }).toString();
-    setTimeout(() => {
-      router.push(`/activate?${q}`); // TODO: ganti ke request OTP WA ke backend
+
+    // Normalize to backend expected format (no plus, e.g. 6281...)
+    const digits = phone.replace(/\D/g, "");
+    const normalize = (d: string) => {
+      if (!d) return null;
+      if (d.startsWith("+")) d = d.replace(/^\+/, "");
+      if (d.startsWith("0")) return `62${d.slice(1)}`;
+      if (d.startsWith("62")) return d;
+      if (d.startsWith("8")) return `62${d}`;
+      return d; // fallback
+    };
+
+    const normalized = normalize(digits);
+    if (!normalized) {
+      setErr("Nomor tidak valid untuk dikirimkan.");
       setLoadingPhone(false);
-    }, 300);
+      return;
+    }
+
+    try {
+      // ask backend to send WA magic-link
+      await authService.initiateWhatsApp(normalized);
+
+      // Keep the visible query phone as +62... (E.164) for activate page UX
+      const e164 = toE164FromLocal62(phone);
+      const q = new URLSearchParams({ mode: "login", phone: e164 }).toString();
+      router.push(`/activate?${q}`);
+    } catch (err: unknown) {
+      // Surface backend error to user
+      setErr(err instanceof Error ? err.message : "Gagal mengirim link WhatsApp.");
+    } finally {
+      setLoadingPhone(false);
+    }
   };
 
   const onGoogle = async () => {

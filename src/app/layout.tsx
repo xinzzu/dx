@@ -36,10 +36,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id" className={poppins.variable}>
+      {/* 💡 Hapus overflow-hidden dari body */}
       <body>
-        {/* 2. Bungkus semua children dengan AuthProvider */}
         <AuthProvider>
-          {children}
+          {/* 💡 Ubah h-screen menjadi h-full (atau biarkan default) jika body boleh scroll */}
+          <div className="bg-white">
+            {children}
+          </div>
           <div id="modal-root"></div>
           <SWRegister />
         </AuthProvider>

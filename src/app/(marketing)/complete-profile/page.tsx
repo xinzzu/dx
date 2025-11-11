@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import RequireProgress from "@/components/guards/RequireProgress";
-import { useOnboarding } from "@/stores/onboarding";
+import { useOnboarding, useIsOnboardingHydrated } from "@/stores/onboarding";
 
 const CompleteProfileContent = dynamic(
   () => import("@/components/auth/CompleteProfileContent"),
@@ -21,9 +21,12 @@ const CompleteProfileContent = dynamic(
 export default function CompleteProfilePage() {
   const router = useRouter();
   const { profileCompleted, onboardingCompleted } = useOnboarding();
+  const hydrated = useIsOnboardingHydrated();
 
   // Redirect if profile is already completed
   useEffect(() => {
+    if (!hydrated) return; // wait until store rehydrated to make redirect decisions
+
     if (profileCompleted) {
       // If onboarding is also complete, go to appropriate dashboard
       if (onboardingCompleted) {
@@ -38,8 +41,16 @@ export default function CompleteProfilePage() {
         router.replace(`/onboarding?type=${type}`);
       }
     }
-  }, [profileCompleted, onboardingCompleted, router]);
+  }, [hydrated, profileCompleted, onboardingCompleted, router]);
 
+  // while store is rehydrating, show a simple full-page loading skeleton
+  if (!hydrated) {
+    return (
+      <main className="min-h-dvh grid place-items-center bg-white">
+        <div className="text-center text-black/60">Memuat...</div>
+      </main>
+    );
+  }
   return (
     <RequireProgress step="complete-profile">
       <CompleteProfileContent />

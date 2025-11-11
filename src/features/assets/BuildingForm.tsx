@@ -74,7 +74,14 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
     [categories]
   );
   const tariffOptions = useMemo(
-    () => tariffs?.map((t) => ({ value: t.id, label: t.power_capacity_label })) || [],
+    () =>
+      tariffs?.map((t) => ({
+        value: t.id,
+        // Include rate per kWh similar to profile edit page for clearer selection
+        label: t.rate_per_kwh
+          ? `${t.power_capacity_label} (Rp ${Number(t.rate_per_kwh).toLocaleString("id-ID")}/kWh)`
+          : t.power_capacity_label,
+      })) || [],
     [tariffs]
   );
 
@@ -107,7 +114,11 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
         const token = await getIdToken();
         if (!token) return;
         const data = await electricityService.getTariffsByCategory(catId, token);
-        setTariffs(data);
+        // Some backends may return extra tariffs not strictly filtered by category_id.
+        // Apply a client-side filter (same behavior as NewBuildingPage) so the VA list
+        // matches the selected golongan (Industri, Pelayanan Sosial, Non-subsidi, dll.).
+        const filtered = data.filter((t) => t.category_id === catId);
+        setTariffs(filtered.length > 0 ? filtered : data);
       } catch (error) {
         console.error("Failed to load tariffs:", error);
         setTariffs([]);
@@ -250,6 +261,19 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
     if (!canSubmit) return;
     const wasEmpty = buildings.length === 0;
 
+    // Debug: log the building about to be added
+    console.debug("[building-form] adding building:", {
+      name: name.trim(),
+      categoryId,
+      tariffId,
+      luas: luas ? Number(luas) : undefined,
+      alamatJalan: alamatJalan.trim(),
+      provinsi,
+      kabKota,
+      kecamatan,
+      kelurahan,
+    });
+
     // Find the selected category and tariff to get display labels and power value
     const selectedCategory = categories.find((c) => c.id === categoryId);
     const selectedTariff = tariffs.find((t) => t.id === tariffId);
@@ -271,6 +295,16 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
       kecamatan,
       kelurahan,
     });
+
+    // Immediately log the current persisted store for debugging (sync read)
+    try {
+      // useAssetWizard.getState() is available from Zustand to synchronously read
+      const getter = (useAssetWizard as unknown as { getState: () => { buildings: unknown[] } }).getState;
+      const state = getter();
+      console.debug("[building-form] asset-wizard store after add:", state.buildings);
+    } catch (e) {
+      console.debug("[building-form] failed to read asset-wizard state after add", e);
+    }
 
     if (wasEmpty) markAssetsBuildingsCompleted();
 

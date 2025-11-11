@@ -14,7 +14,7 @@ export default function BottomNavLembaga({ items = [] as NavItemLembaga[] }) {
   const pathname = usePathname() || "/";
 
   return (
-    <nav aria-label="Bottom navigation" className="fixed inset-x-0 bottom-0 z-50">
+    <nav aria-label="Bottom navigation">
       {/* full-bleed mobile, rounded + outline supaya garis hijau melengkung */}
       <div
         className="

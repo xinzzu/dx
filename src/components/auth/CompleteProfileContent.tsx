@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Button from "@/components/ui/Button";
 import TextField from "@/components/ui/TextField";
 import Select from "@/components/ui/Select";
+import Modal from "@/components/ui/Modal";
 
 // ⬇ TAMBAHAN: progress guard & store
 import RequireProgress from "@/components/guards/RequireProgress";
@@ -25,6 +26,7 @@ type IndividuData = {
   email: string;
   nomorTelepon: string;
   jenisKelamin: string;
+  address: string;
   provinsi: string;
   kabupaten: string;
   kecamatan: string;
@@ -37,6 +39,7 @@ type LembagaData = {
   email: string;
   nomorTelepon: string;
   jenisLembaga: string;
+  address: string;
   provinsi: string;
   kabupaten: string;
   kecamatan: string;
@@ -57,13 +60,42 @@ const JENIS_LEMBAGA = [
   { value: "organisasi", label: "Organisasi" },
 ];
 
-export default function CompleteProfileContent() {
+type Props = { onSaved?: () => void | Promise<void> };
+
+export default function CompleteProfileContent({ onSaved }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getIdToken, currentUser: currentFirebaseUser } = useAuth();
 
+  // helper: ensure we always use backend access token (exchange if needed)
+  const resolveBackendToken = useCallback(async (): Promise<string | null> => {
+    // prefer saved backend token
+    const token = authService.getToken() ?? null;
+    if (token) return token;
+
+    // fallback: try to exchange firebase id token
+    const firebaseIdToken = await getIdToken();
+    if (!firebaseIdToken || !currentFirebaseUser) return null;
+
+    try {
+      const backend = await authService.loginWithGoogle(firebaseIdToken);
+      authService.saveToken(backend);
+      return backend;
+    } catch (e) {
+      console.error('[auth] exchange failed in resolveBackendToken', e);
+      return null;
+    }
+  }, [getIdToken, currentFirebaseUser]);
+
+  // helper: normalize Indonesian phone numbers to E.164 (simple)
+  function normalizePhone(localPhone?: string) {
+    if (!localPhone) return localPhone || "";
+    const digits = String(localPhone).replace(/\D/g, "");
+    if (digits.startsWith("0")) return "62" + digits.slice(1);
+    return digits;
+  }
+
   const initialType = (searchParams?.get("type") as Mode) || "individu";
-  const phone = searchParams?.get("phone") || "";
 
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -83,12 +115,14 @@ export default function CompleteProfileContent() {
   const [loadingRegencies, setLoadingRegencies] = useState(false);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [loadingVillages, setLoadingVillages] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const [individu, setIndividu] = useState<IndividuData>({
     namaLengkap: "",
     email: "",
     nomorTelepon: "",
     jenisKelamin: "",
+    address: "",
     provinsi: "",
     kabupaten: "",
     kecamatan: "",
@@ -101,6 +135,7 @@ export default function CompleteProfileContent() {
     email: "",
     nomorTelepon: "",
     jenisLembaga: "",
+    address: "",
     provinsi: "",
     kabupaten: "",
     kecamatan: "",
@@ -112,7 +147,13 @@ export default function CompleteProfileContent() {
   const [errorsOrg, setErrorsOrg] = useState<Partial<LembagaData>>({});
 
   // ⬇ TAMBAHAN: ambil action progress
-  const { markProfileCompleted } = useOnboarding();
+  const {
+    markProfileCompleted,
+    markAssetsBuildingsCompleted,
+    markAssetsVehiclesCompleted,
+    markAssetsCompleted,
+    markActivated,
+  } = useOnboarding();
 
   // ⬇ BARU: Convert API data to Select options format
   const provinceOptions = provinces.map((p) => ({
@@ -147,24 +188,25 @@ export default function CompleteProfileContent() {
     async function loadUser() {
       setLoadingUser(true);
       try {
-        let token = await getIdToken();
-        
-        // Jika tidak ada backend token, coba exchange Firebase token
-        if (!token && currentFirebaseUser) {
-          try {
-            console.log("No backend token found. Exchanging Firebase token...");
-            const firebaseIdToken = await currentFirebaseUser.getIdToken(true);
-            const backendAccessToken = await authService.loginWithGoogle(firebaseIdToken);
-            authService.saveToken(backendAccessToken);
-            token = backendAccessToken;
-            console.log("Backend token obtained successfully");
-          } catch (exchangeError) {
-            console.error("Failed to exchange Firebase token:", exchangeError);
-            setLoadingUser(false);
-            return;
+        // prefer backend access token saved by authService; fallback to Firebase ID token + exchange
+        let token: string | null = authService.getToken() ?? null;
+
+        // if no backend token, try to get firebase id token and exchange it
+        if (!token) {
+          const firebaseIdToken = await getIdToken();
+          if (firebaseIdToken && currentFirebaseUser) {
+            try {
+              const backendAccessToken = await authService.loginWithGoogle(firebaseIdToken);
+              authService.saveToken(backendAccessToken);
+              token = backendAccessToken;
+              console.log("Backend token obtained successfully");
+            } catch (exchangeError) {
+              console.error("Failed to exchange Firebase token:", exchangeError);
+              setLoadingUser(false);
+              return;
+            }
           }
         }
-        
         if (!token) {
           console.warn("No backend token. User must login first.");
           setLoadingUser(false);
@@ -173,6 +215,30 @@ export default function CompleteProfileContent() {
 
         const userData = await userService.getMe(token);
         setCurrentUser(userData);
+
+        // Sync onboarding flags from backend user object so UI reflects
+        // server-side completion state (e.g. when user already completed
+        // profile on another device or via magic link).
+        try {
+          if (userData.is_profile_complete) {
+            markProfileCompleted();
+          }
+          if (userData.is_asset_buildings_completed) {
+            markAssetsBuildingsCompleted();
+          }
+          if (userData.is_asset_vehicles_completed) {
+            markAssetsVehiclesCompleted();
+          }
+          // If both asset bits are true, mark overall assets completed
+          if (userData.is_asset_buildings_completed && userData.is_asset_vehicles_completed) {
+            markAssetsCompleted();
+          }
+          // If token exists, consider user activated
+          markActivated();
+        } catch (e) {
+          // non-fatal: don't block page if store update fails
+          console.debug('[onboarding] failed to sync flags', e);
+        }
 
         // Pre-fill email dari backend
         if (userData.email) {
@@ -204,8 +270,8 @@ export default function CompleteProfileContent() {
     async function loadProvinces() {
       setLoadingProvinces(true);
       try {
-        const token = await getIdToken();
-        
+        const token = await resolveBackendToken();
+
         if (!token) {
           console.warn("No backend token available. User must login first.");
           setLoadingProvinces(false);
@@ -223,17 +289,17 @@ export default function CompleteProfileContent() {
     if (mounted) {
       loadProvinces();
     }
-  }, [mounted, getIdToken]);
+  }, [mounted, resolveBackendToken]);
 
   // ⬇ BARU: Load regencies ketika provinsi berubah
   useEffect(() => {
     async function loadRegencies(provinceCode: string) {
       setLoadingRegencies(true);
       try {
-        const token = await getIdToken();
-        if (!token) return;
-        
-        const data = await areaService.getRegencies(provinceCode, token);
+  const token = await resolveBackendToken();
+  if (!token) return;
+
+  const data = await areaService.getRegencies(provinceCode, token);
         setRegencies(data);
       } catch (error) {
         console.error("Failed to load regencies:", error);
@@ -249,17 +315,17 @@ export default function CompleteProfileContent() {
     } else {
       setRegencies([]);
     }
-  }, [individu.provinsi, lembaga.provinsi, mode, getIdToken]);
+  }, [individu.provinsi, lembaga.provinsi, mode, resolveBackendToken]);
 
   // ⬇ BARU: Load districts ketika kabupaten berubah
   useEffect(() => {
     async function loadDistricts(regencyCode: string) {
       setLoadingDistricts(true);
       try {
-        const token = await getIdToken();
-        if (!token) return;
-        
-        const data = await areaService.getDistricts(regencyCode, token);
+  const token = await resolveBackendToken();
+  if (!token) return;
+
+  const data = await areaService.getDistricts(regencyCode, token);
         setDistricts(data);
       } catch (error) {
         console.error("Failed to load districts:", error);
@@ -275,17 +341,17 @@ export default function CompleteProfileContent() {
     } else {
       setDistricts([]);
     }
-  }, [individu.kabupaten, lembaga.kabupaten, mode, getIdToken]);
+  }, [individu.kabupaten, lembaga.kabupaten, mode, resolveBackendToken]);
 
   // ⬇ BARU: Load villages ketika kecamatan berubah
   useEffect(() => {
     async function loadVillages(districtCode: string) {
       setLoadingVillages(true);
       try {
-        const token = await getIdToken();
-        if (!token) return;
-        
-        const data = await areaService.getVillages(districtCode, token);
+  const token = await resolveBackendToken();
+  if (!token) return;
+
+  const data = await areaService.getVillages(districtCode, token);
         setVillages(data);
       } catch (error) {
         console.error("Failed to load villages:", error);
@@ -301,7 +367,7 @@ export default function CompleteProfileContent() {
     } else {
       setVillages([]);
     }
-  }, [individu.kecamatan, lembaga.kecamatan, mode, getIdToken]);
+  }, [individu.kecamatan, lembaga.kecamatan, mode, resolveBackendToken]);
 
   function setField(
     field: keyof IndividuData | keyof LembagaData,
@@ -395,6 +461,7 @@ export default function CompleteProfileContent() {
       if (!individu.kodePos.trim()) e.kodePos = "Kode pos wajib diisi";
       else if (!/^[0-9]{5}$/.test(individu.kodePos))
         e.kodePos = "Kode pos harus 5 digit angka";
+      if (!individu.address.trim()) e.address = "Alamat wajib diisi";
       setErrorsInd(e);
       return Object.keys(e).length === 0;
     } else {
@@ -416,6 +483,7 @@ export default function CompleteProfileContent() {
       if (!lembaga.kodePos.trim()) e.kodePos = "Kode pos wajib diisi";
       else if (!/^[0-9]{5}$/.test(lembaga.kodePos))
         e.kodePos = "Kode pos harus 5 digit angka";
+      if (!lembaga.address.trim()) e.address = "Alamat wajib diisi";
       setErrorsOrg(e);
       return Object.keys(e).length === 0;
     }
@@ -450,86 +518,142 @@ export default function CompleteProfileContent() {
     );
   }, [mode, individu, lembaga]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleInitialSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate()) return;
 
+    setShowConfirmation(true);
+  }
+
+  async function handleConfirmedSubmit() {
+    setShowConfirmation(false);
     setIsLoading(true);
     setSubmitError("");
 
     try {
-      const token = await getIdToken();
-      
+  const token = await resolveBackendToken();
+
       if (!token) {
         setSubmitError("Token tidak ditemukan. Silakan login kembali.");
         setIsLoading(false);
         return;
       }
 
-      // Prepare payload sesuai format backend API
-      const payload = mode === "individu" 
-        ? {
-            name: individu.namaLengkap,
-            phone_number: individu.nomorTelepon,
-            user_type: mode as 'individu' | 'lembaga',
-            province: individu.provinsi,
-            city: individu.kabupaten,
-            district: individu.kecamatan,
-            sub_district: individu.kelurahan,
-            postal_code: individu.kodePos,
-            is_profile_complete: true,
-            // Individu-specific field
-            gender: (individu.jenisKelamin === "laki-laki" ? "male" : "female") as 'male' | 'female',
-          }
-        : {
-            name: lembaga.namaLembaga,
-            phone_number: lembaga.nomorTelepon,
-            user_type: mode as 'individu' | 'lembaga',
-            province: lembaga.provinsi,
-            city: lembaga.kabupaten,
-            district: lembaga.kecamatan,
-            sub_district: lembaga.kelurahan,
-            postal_code: lembaga.kodePos,
-            is_profile_complete: true,
-            // Lembaga-specific field
-            institution_type: lembaga.jenisLembaga,
-          };
+      // Verify token works by fetching current user before submitting
+      try {
+        const meBefore = await userService.getMe(token);
+        console.debug("[profile] GET /user/me before submit:", meBefore);
+      } catch (e: unknown) {
+        console.error("[profile] GET /user/me failed before submit:", e);
+        setSubmitError(
+          (e instanceof Error && e.message) ? `Gagal memverifikasi token: ${e.message}` : "Gagal memverifikasi token sebelum menyimpan profil."
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // Prepare payload using nested profile objects to match backend example
+      const payload =
+        mode === "individu"
+          ? {
+              phone_number: normalizePhone(individu.nomorTelepon),
+              province: individu.provinsi,
+              city: individu.kabupaten,
+              district: individu.kecamatan,
+              sub_district: individu.kelurahan,
+              postal_code: individu.kodePos,
+              user_type: mode as "individu" | "lembaga",
+              address: individu.address,
+              is_profile_complete: true,
+              active: true,
+              individual_profile: {
+                full_name: individu.namaLengkap,
+                gender: (individu.jenisKelamin === "laki-laki" ? "male" : "female") as
+                  | "male"
+                  | "female",
+                active: true,
+              },
+              email: individu.email || undefined,
+            }
+          : {
+              phone_number: normalizePhone(lembaga.nomorTelepon),
+              province: lembaga.provinsi,
+              city: lembaga.kabupaten,
+              district: lembaga.kecamatan,
+              sub_district: lembaga.kelurahan,
+              postal_code: lembaga.kodePos,
+              user_type: mode as "individu" | "lembaga",
+              address: lembaga.address,
+              is_profile_complete: true,
+              active: true,
+              institution_profile: {
+                name: lembaga.namaLembaga,
+                active: true,
+              },
+              email: lembaga.email || undefined,
+            };
+
+      // Debug: mask token so we can confirm a token is present without leaking it
+      try {
+        const masked = token ? `${String(token).slice(0, 8)}... (len=${String(token).length})` : "<no-token>";
+        console.debug("[profile] submitting with token:", masked);
+      } catch {
+        /* ignore debug failures */
+      }
 
       console.log("Submitting profile to backend:", payload);
 
-      // Call backend API - Use PUT /user/me to update existing user (created during Google login)
-      const updatedUser = await userService.updateProfile(payload, token);
-      
+      // Call backend API - For first-time completion we PUT to /user/ as requested
+      // Note: backend typings expect flat UpdateProfilePayload; we include nested
+      // objects here for the server and cast to any to avoid TS-lint errors.
+      const isFirstTime = !!currentUser && !currentUser.is_profile_complete;
+      let updatedUser;
+      if (isFirstTime) {
+        updatedUser = await userService.createProfile(payload, token);
+      } else {
+        updatedUser = await userService.updateProfile(payload, token);
+      }
+
       console.log("Profile updated successfully:", updatedUser);
 
-      // ⬇ Tandai progres complete
-      markProfileCompleted();
-
-      // ⬇ Redirect berdasarkan user_type
-      if (mode === "individu") {
-        router.replace("/onboarding?type=individu"); // Onboarding individu
+      // If parent provided an onSaved callback, let it handle marking/syncing and redirect.
+      if (onSaved) {
+        try {
+          await onSaved();
+        } catch {
+          // ignore — parent will handle errors/logging
+        }
       } else {
-        router.replace("/onboarding?type=lembaga"); // Onboarding lembaga
+        // ⬇ Tandai progres complete (fallback)
+        markProfileCompleted();
+
+        // ⬇ Redirect berdasarkan user_type
+        if (mode === "individu") {
+          router.replace("/onboarding?type=individu"); // Onboarding individu
+        } else {
+          router.replace("/onboarding?type=lembaga"); // Onboarding lembaga
+        }
       }
 
     } catch (error: unknown) {
       console.error("Failed to update profile:", error);
-      
+
       // Handle error message
       let errorMessage = "Gagal menyimpan profil. Silakan coba lagi.";
-      const err = error as {message?: string; meta?: {message?: string}};
-      
+      const err = error as { message?: string; meta?: { message?: string } };
+
       if (err.message) {
         errorMessage = err.message;
       } else if (err.meta?.message) {
         errorMessage = err.meta.message;
       }
-      
+
       setSubmitError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   }
+
 
   if (!mounted || loadingUser) {
     // skeleton
@@ -579,7 +703,7 @@ export default function CompleteProfileContent() {
                 className={[
                   "h-10 rounded-xl text-sm font-medium transition",
                   mode === "individu"
-                    ? "bg-white text-[color:var(--color-primary)] shadow"
+                    ? "bg-white text-[#10B981] shadow"
                     : "text-[#727272]",
                 ].join(" ")}
               >
@@ -591,7 +715,7 @@ export default function CompleteProfileContent() {
                 className={[
                   "h-10 rounded-xl text-sm font-medium transition",
                   mode === "lembaga"
-                    ? "bg-white text-[color:var(--color-primary)] shadow"
+                    ? "bg-white text-[#10B981] shadow"
                     : "text-[#727272]",
                 ].join(" ")}
               >
@@ -608,7 +732,7 @@ export default function CompleteProfileContent() {
           )}
 
           {/* FORM */}
-          <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+          <form onSubmit={handleInitialSubmit} className="mt-6 space-y-6">
             {mode === "individu" ? (
               <>
                 <TextField
@@ -628,9 +752,13 @@ export default function CompleteProfileContent() {
                   value={individu.email}
                   onChange={(e) => setField("email", e.target.value)}
                   error={errorsInd.email}
-                  disabled={!!currentUser?.email}
+                  // If user is logged in with Firebase (Google), email should be locked
+                  disabled={!!currentFirebaseUser}
                   required
                 />
+                {currentFirebaseUser && (
+                  <p className="text-xs text-muted-foreground mt-1">Email dikunci karena login menggunakan Google.</p>
+                )}
                 <TextField
                   id="nomorTelepon"
                   label="Nomor Telepon"
@@ -639,8 +767,13 @@ export default function CompleteProfileContent() {
                   value={individu.nomorTelepon}
                   onChange={(e) => setField("nomorTelepon", e.target.value)}
                   error={errorsInd.nomorTelepon}
+                  // If user logged in via WhatsApp (no Firebase user), lock phone field
+                  disabled={!currentFirebaseUser}
                   required
                 />
+                {!currentFirebaseUser && (
+                  <p className="text-xs text-muted-foreground mt-1">Nomor telepon dikunci karena login menggunakan WhatsApp.</p>
+                )}
                 <Select
                   id="jenisKelamin"
                   label="Jenis Kelamin"
@@ -673,8 +806,8 @@ export default function CompleteProfileContent() {
                     loadingRegencies
                       ? "Memuat kabupaten..."
                       : individu.provinsi
-                      ? "Pilih kabupaten/kota"
-                      : "Pilih provinsi terlebih dahulu"
+                        ? "Pilih kabupaten/kota"
+                        : "Pilih provinsi terlebih dahulu"
                   }
                   options={regencyOptions}
                   value={individu.kabupaten}
@@ -690,8 +823,8 @@ export default function CompleteProfileContent() {
                     loadingDistricts
                       ? "Memuat kecamatan..."
                       : individu.kabupaten
-                      ? "Pilih kecamatan"
-                      : "Pilih kabupaten terlebih dahulu"
+                        ? "Pilih kecamatan"
+                        : "Pilih kabupaten terlebih dahulu"
                   }
                   options={districtOptions}
                   value={individu.kecamatan}
@@ -707,14 +840,23 @@ export default function CompleteProfileContent() {
                     loadingVillages
                       ? "Memuat kelurahan..."
                       : individu.kecamatan
-                      ? "Pilih kelurahan"
-                      : "Pilih kecamatan terlebih dahulu"
+                        ? "Pilih kelurahan"
+                        : "Pilih kecamatan terlebih dahulu"
                   }
                   options={villageOptions}
                   value={individu.kelurahan}
                   onChange={(e) => setField("kelurahan", e.target.value)}
                   error={errorsInd.kelurahan}
                   disabled={!individu.kecamatan || loadingVillages}
+                  required
+                />
+                <TextField
+                  id="alamat"
+                  label="Alamat"
+                  placeholder="Contoh: Jl. Asia Afrika No.8, RT 01/RW 02"
+                  value={individu.address}
+                  onChange={(e) => setField("address", e.target.value)}
+                  error={errorsInd.address as string | undefined}
                   required
                 />
                 <TextField
@@ -752,9 +894,13 @@ export default function CompleteProfileContent() {
                   value={lembaga.email}
                   onChange={(e) => setField("email", e.target.value)}
                   error={errorsOrg.email}
-                  disabled={!!currentUser?.email}
+                  // lock email when logged in via Firebase
+                  disabled={!!currentFirebaseUser}
                   required
                 />
+                {currentFirebaseUser && (
+                  <p className="text-xs text-muted-foreground mt-1">Email dikunci karena login menggunakan Google.</p>
+                )}
                 <TextField
                   id="nomorTeleponOrg"
                   label="Nomor Telepon"
@@ -763,8 +909,13 @@ export default function CompleteProfileContent() {
                   value={lembaga.nomorTelepon}
                   onChange={(e) => setField("nomorTelepon", e.target.value)}
                   error={errorsOrg.nomorTelepon}
+                  // lock phone for WA login (no Firebase user)
+                  disabled={!currentFirebaseUser}
                   required
                 />
+                {!currentFirebaseUser && (
+                  <p className="text-xs text-muted-foreground mt-1">Nomor telepon dikunci karena login menggunakan WhatsApp.</p>
+                )}
                 <Select
                   id="jenisLembaga"
                   label="Jenis Lembaga"
@@ -797,8 +948,8 @@ export default function CompleteProfileContent() {
                     loadingRegencies
                       ? "Memuat kabupaten..."
                       : lembaga.provinsi
-                      ? "Pilih kabupaten/kota"
-                      : "Pilih provinsi terlebih dahulu"
+                        ? "Pilih kabupaten/kota"
+                        : "Pilih provinsi terlebih dahulu"
                   }
                   options={regencyOptions}
                   value={lembaga.kabupaten}
@@ -814,8 +965,8 @@ export default function CompleteProfileContent() {
                     loadingDistricts
                       ? "Memuat kecamatan..."
                       : lembaga.kabupaten
-                      ? "Pilih kecamatan"
-                      : "Pilih kabupaten terlebih dahulu"
+                        ? "Pilih kecamatan"
+                        : "Pilih kabupaten terlebih dahulu"
                   }
                   options={districtOptions}
                   value={lembaga.kecamatan}
@@ -831,14 +982,23 @@ export default function CompleteProfileContent() {
                     loadingVillages
                       ? "Memuat kelurahan..."
                       : lembaga.kecamatan
-                      ? "Pilih kelurahan"
-                      : "Pilih kecamatan terlebih dahulu"
+                        ? "Pilih kelurahan"
+                        : "Pilih kecamatan terlebih dahulu"
                   }
                   options={villageOptions}
                   value={lembaga.kelurahan}
                   onChange={(e) => setField("kelurahan", e.target.value)}
                   error={errorsOrg.kelurahan}
                   disabled={!lembaga.kecamatan || loadingVillages}
+                  required
+                />
+                <TextField
+                  id="alamatOrg"
+                  label="Alamat"
+                  placeholder="Contoh: Jl. Asia Afrika No.8, RT 01/RW 02"
+                  value={lembaga.address}
+                  onChange={(e) => setField("address", e.target.value)}
+                  error={errorsOrg.address as string | undefined}
                   required
                 />
                 <TextField
@@ -870,7 +1030,39 @@ export default function CompleteProfileContent() {
           </form>
         </div>
       </main>
+
+      <Modal
+        isOpen={showConfirmation}
+        onClose={() => setShowConfirmation(false)}
+        title="Konfirmasi Pendaftaran"
+      >
+        <div className="text-gray-700">
+          <p className="mb-4">
+            Anda akan mendaftar sebagai <span className="font-bold">{mode === 'individu' ? 'Individu' : 'Lembaga'}</span>.
+            Mode ini akan menentukan alur <span className="font-bold">onboarding</span> dan jenis aset yang Anda kelola.
+          </p>
+          <p className="font-semibold">
+            Apakah Anda yakin dengan pilihan ini?
+          </p>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => setShowConfirmation(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmedSubmit}
+              disabled={isLoading}
+            >
+              Ya, Lanjutkan ({mode === 'individu' ? 'Individu' : 'Lembaga'})
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </RequireProgress>
-    
+
   );
 }

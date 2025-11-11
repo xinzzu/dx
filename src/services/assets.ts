@@ -53,6 +53,8 @@ export interface CreateVehiclePayload {
   user_id: string; // REQUIRED - Must be provided explicitly
   description?: string;
   emission_factor_id: string; // REQUIRED - emissionFactorId from store
+  /** Mark vehicle as active/inactive */
+  active?: boolean;
   metadata?: VehicleMetadata;
 }
 
@@ -62,6 +64,8 @@ export interface BuildingResponse {
   name: string;
   description?: string;
   electricity_tariff_id: string;
+  electricity_tariff_rate_per_kwh: string;
+  power_capacity_label: string;
   has_renewables?: boolean;
   province_code: string;
   regency_code: string;
@@ -99,7 +103,7 @@ export const assetsService = {
    * @returns Array of building assets
    */
   async getBuildings(token: string): Promise<BuildingResponse[]> {
-    return await fetchWithAuth<BuildingResponse[]>('/building-assets', token);
+    return await fetchWithAuth<BuildingResponse[]>('/me/building-assets', token);
   },
 
   /**
@@ -108,7 +112,7 @@ export const assetsService = {
    * @returns Array of vehicle assets
    */
   async getVehicles(token: string): Promise<VehicleResponse[]> {
-    return await fetchWithAuth<VehicleResponse[]>('/vehicle-assets', token);
+    return await fetchWithAuth<VehicleResponse[]>('/me/vehicle-assets', token);
   },
 
   /**
@@ -173,6 +177,31 @@ export const assetsService = {
   },
 
   /**
+   * Delete a vehicle asset
+   * @param id - Vehicle ID
+   * @param token - Authentication token
+   */
+  async deleteVehicle(id: string, token: string): Promise<void> {
+    await fetchWithAuth<void>(
+      `/vehicle-assets/${id}`,
+      token,
+      {
+        method: 'DELETE',
+      }
+    );
+  },
+
+  /**
+   * Get a single vehicle asset by id
+   * @param id - Vehicle ID
+   * @param token - Authentication token
+   * @returns Vehicle response
+   */
+  async getVehicle(id: string, token: string): Promise<VehicleResponse> {
+    return await fetchWithAuth<VehicleResponse>(`/vehicle-assets/${id}`, token);
+  },
+
+  /**
    * Get a single building asset
    * @param id - Building ID
    * @param token - Authentication token
@@ -220,8 +249,8 @@ export const assetsService = {
       full_address: building.alamatJalan, // REQUIRED: Use street address as full_address
       metadata: {
         area_sqm: building.luasM2,
-        electronics_inventory: Object.keys(electronics_inventory).length > 0 
-          ? electronics_inventory 
+        electronics_inventory: Object.keys(electronics_inventory).length > 0
+          ? electronics_inventory
           : undefined,
       },
     };
@@ -266,17 +295,25 @@ export const assetsService = {
   async createVehicle(
     vehicle: Vehicle,
     userId: string,
-    token: string
+    token: string,
+    extraMetadata?: Record<string, unknown>
   ): Promise<VehicleResponse> {
+    const baseMetadata: VehicleMetadata = {
+      fuel_type: vehicle.fuelTypeLabel?.toLowerCase(), // "Bensin" -> "bensin"
+      vehicle_type: vehicle.vehicleTypeLabel,
+      capacity_range: vehicle.capacityRangeLabel,
+    };
+
     const payload: CreateVehiclePayload = {
       name: vehicle.name,
       user_id: userId, // REQUIRED - from backend user profile
       emission_factor_id: vehicle.emissionFactorId, // Changed from vehicle_emission_factor_id
+      // Newly created vehicles should be active by default
+      active: true,
       metadata: {
-        fuel_type: vehicle.fuelTypeLabel?.toLowerCase(), // "Bensin" -> "bensin"
-        vehicle_type: vehicle.vehicleTypeLabel,
-        capacity_range: vehicle.capacityRangeLabel,
-        // Can be extended later with more fields from edit page
+        ...baseMetadata,
+        // Merge any extra metadata provided by caller (e.g., fuel_product_id)
+        ...(extraMetadata || {}),
       },
     };
 
@@ -287,6 +324,30 @@ export const assetsService = {
       token,
       {
         method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  /**
+   * Update a vehicle asset
+   * @param id - Vehicle ID
+   * @param payload - Partial create vehicle payload
+   * @param token - Authentication token
+   * @returns Updated vehicle response
+   */
+  async updateVehicle(
+    id: string,
+    payload: Partial<CreateVehiclePayload>,
+    token: string
+  ): Promise<VehicleResponse> {
+    console.log('🚗 Updating vehicle with payload:', JSON.stringify(payload, null, 2));
+
+    return await fetchWithAuth<VehicleResponse>(
+      `/vehicle-assets/${id}`,
+      token,
+      {
+        method: 'PUT',
         body: JSON.stringify(payload),
       }
     );

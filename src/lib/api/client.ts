@@ -43,6 +43,18 @@ export async function fetchWithAuth<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Dev-only debug: print masked Authorization header and endpoint so we can
+  // verify the token reaches the fetch call. This helps find cases where the
+  // token exists in localStorage but isn't passed into fetch.
+  try {
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || process.env.NODE_ENV !== 'production')) {
+      const masked = token ? `${String(token).slice(0, 8)}... (len=${String(token).length})` : '<no-token>';
+      console.debug(`[API DEBUG] Request: ${API_BASE_URL}${endpoint} Authorization: ${masked}`);
+    }
+  } catch {
+    // ignore debug errors
+  }
+
   // Debug: log electricity-tariffs requests (masked token) to help debugging filtering
   try {
     if (endpoint.includes('electricity-tariffs')) {
@@ -99,10 +111,9 @@ export async function fetchWithAuth<T>(
       }
     }
     
-    const finalError = new Error(errorMessage);
-    // Attach details for debugging
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (finalError as any).details = errorDetails;
+    const finalError = new Error(errorMessage) as Error & { details?: string };
+    // Attach details for debugging in a typed-safe way
+    finalError.details = errorDetails;
     throw finalError;
   }
 

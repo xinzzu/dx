@@ -300,7 +300,7 @@ export default function NewBuildingPage() {
         >
           <Image src="/arrow-left.svg" alt="" width={18} height={18} />
         </button>
-        <h1 className="flex-1 text-center text-lg font-semibold">
+        <h1 className="flex-1 text-center text-lg font-semibold text-black">
           Tambah Bangunan
         </h1>
         <div className="h-9 w-9" />
@@ -313,7 +313,7 @@ export default function NewBuildingPage() {
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <TextField
           label="Nama Bangunan"
-          placeholder="Contoh: Masjid-1"
+          placeholder="Contoh: Bangunan Utama"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -413,19 +413,28 @@ export default function NewBuildingPage() {
           <label className="block text-sm font-medium text-gray-700">
             Peralatan Listrik <span className="text-xs text-gray-500">(Opsional)</span>
           </label>
-          <p className="text-xs text-gray-500 mb-2">
-            Tambahkan peralatan listrik yang ada di bangunan ini
-          </p>
-          <Button
+          <p className="text-xs text-gray-500 mb-2">Tambahkan peralatan listrik yang ada di bangunan ini</p>
+          <button
             type="button"
-            variant="outline"
-            fullWidth
             onClick={() => setShowApplianceSheet(true)}
+            className="w-full rounded-xl border-2 border-dashed border-emerald-500/60 bg-white p-4 text-left hover:bg-gray-50 transition-colors"
           >
-            {Object.values(appliances).some(count => count > 0)
-              ? `${Object.values(appliances).reduce((sum, count) => sum + count, 0)} Peralatan Dipilih`
-              : "Pilih Peralatan Listrik"}
-          </Button>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-emerald-600">
+                  {Object.values(appliances).some(count => count > 0)
+                    ? "Peralatan Listrik"
+                    : "+ Peralatan Listrik"}
+                </div>
+                <div className="text-xs text-black/60 mt-1">
+                  {Object.values(appliances).some(count => count > 0)
+                    ? `${Object.values(appliances).filter(count => count > 0).length} peralatan terdaftar`
+                    : "0 peralatan terdaftar"}
+                </div>
+              </div>
+              <span className="text-emerald-600">➜</span>
+            </div>
+          </button>
         </div>
 
         <div className="flex gap-3 pt-4">

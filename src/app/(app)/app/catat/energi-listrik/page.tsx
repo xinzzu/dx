@@ -2,16 +2,21 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useUsage } from "@/stores/catat/usage";
+import type { EnergyReport } from "@/stores/catat/usage";
 import Select from "@/components/ui/Select";
 import TextField from "@/components/ui/TextField";
 import Button from "@/components/ui/Button";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
-import { assetsService, BuildingResponse } from "@/services/assets";
+import { assetsService, type BuildingResponse } from "@/services/assets";
+import ReportSavedModal from "@/components/ui/ReportSavedModal";
+import ScrollContainer from "@/components/nav/ScrollContainer";
+
+// Backend may return a minimal response containing total CO₂e under various keys.
 
 const CLEAN_TYPES = [
-  { value: "solar", label: "Solar (PLTS)" },
+  { value: "solar", label: "Tenaga Surya" },
   { value: "angin", label: "Angin" },
   { value: "air", label: "Air" },
   { value: "lainnya", label: "Lainnya" },
@@ -21,13 +26,18 @@ export default function CatatEnergiIndividuPage() {
   const { addEnergy } = useUsage();
   const router = useRouter();
   const { getIdToken } = useAuth();
-  
+
   const [date, setDate] = useState("");
   const [buildingId, setBuildingId] = useState("");
   const [billCost, setBillCost] = useState("");
   const [useClean, setUseClean] = useState<boolean | undefined>(undefined);
   const [cleanType, setCleanType] = useState("");
   const [cleanKwh, setCleanKwh] = useState("");
+
+  // modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [savedTotal, setSavedTotal] = useState<number | null>(null);
+  const [savedCleanEnergy, setSavedCleanEnergy] = useState<{ type: string; energy_produced: number } | null>(null);
 
   // Fetch buildings from backend
   const [buildings, setBuildings] = useState<BuildingResponse[]>([]);
@@ -37,15 +47,15 @@ export default function CatatEnergiIndividuPage() {
   const getBackendToken = useCallback(async (): Promise<string | null> => {
     const { authService } = await import("@/services/auth");
     let backendToken = authService.getToken();
-    
+
     if (!backendToken) {
       const firebaseToken = await getIdToken();
       if (!firebaseToken) return null;
-      
+
       backendToken = await authService.loginWithGoogle(firebaseToken);
       authService.saveToken(backendToken);
     }
-    
+
     return backendToken;
   }, [getIdToken]);
 
@@ -56,7 +66,7 @@ export default function CatatEnergiIndividuPage() {
         setLoadingBuildings(true);
         const token = await getBackendToken();
         if (!token) return;
-        
+
         const data = await assetsService.getBuildings(token);
         setBuildings(data);
       } catch (error) {
@@ -98,40 +108,75 @@ export default function CatatEnergiIndividuPage() {
 
       const { reportsService } = await import("@/services/reports");
 
-      // Submit to backend
-      const payload = {
+      // Payload untuk BE
+      const payload: Record<string, unknown> = {
         report_date: date,
         building_asset_id: buildingId,
         total_cost_rp: Number(billCost || 0),
       };
 
-      console.log("📤 Submitting electricity report:", payload);
-      console.log("📝 Building ID:", buildingId);
-      console.log("💰 Bill Cost:", billCost, "->", Number(billCost || 0));
-      console.log("📅 Date:", date);
-      
-      const response = await reportsService.submitElectricityReport(payload, token);
-      console.log("✅ Report submitted successfully:", response);
+      // Jika memakai energi bersih, kirimkan field yang sesuai backend
+      if (useClean) {
+        payload.produced_kwh = Number(cleanKwh || 0);
+        const cleanLabel = CLEAN_TYPES.find((c) => c.value === cleanType)?.label ?? cleanType;
+        payload.clean_energy_type = cleanLabel;
+      }
 
-      // Save to local state (for offline/cache)
+      console.log("📤 Submitting electricity report:", payload);
+
+      // submitElectricityReport expects a typed payload; cast payload to unknown so we can send extra fields
+      // Call submit helper while allowing extra fields in payload. We narrow types locally to avoid `any`.
+      const submitFn = reportsService.submitElectricityReport as unknown as (
+        p: Record<string, unknown>,
+        t: string
+      ) => Promise<unknown>;
+      const resp = await submitFn(payload as Record<string, unknown>, token);
+
+      console.log("✅ Report submitted successfully:", resp);
+
+      // Safely read numeric CO₂ value from possible backend keys
+      const respObj = (resp && typeof resp === "object") ? (resp as Record<string, unknown>) : {};
+      const co2Keys = ["total_co2e", "total_co2e_produced", "emission_kgco2e"];
+      let totalCo2e: number | null = null;
+      for (const k of co2Keys) {
+        const v = respObj[k];
+        if (typeof v === "number") {
+          totalCo2e = v;
+          break;
+        }
+      }
+
+      // Optional: some backends include clean energy summary in response
+      let cleanEnergy: { type: string; energy_produced: number } | null = null;
+      const ce = respObj["clean_energy"];
+      if (ce && typeof ce === "object") {
+        const maybeType = (ce as Record<string, unknown>)["type"];
+        const maybeProduced = (ce as Record<string, unknown>)["energy_produced"];
+        if (typeof maybeType === "string" && typeof maybeProduced === "number") {
+          cleanEnergy = { type: maybeType, energy_produced: maybeProduced };
+        }
+      }
+
+      // Simpan ke local store (offline/cache)
       addEnergy({
         date,
         buildingId,
         billCost: Number(billCost || 0),
         useClean: useClean,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        cleanType: useClean ? (cleanType as any) : undefined,
+        cleanType: useClean ? (cleanType as EnergyReport["cleanType"]) : undefined,
         cleanKwh: useClean ? Number(cleanKwh || 0) : undefined,
       });
 
-      // Reset form
+      // Reset ringan form (biar siap input baru)
       setBillCost("0");
       setCleanType("");
       setCleanKwh("0");
       setUseClean(undefined);
 
-      // Navigate back or show success message
-      router.back();
+  // Tampilkan modal sukses + total CO₂e (jika ada)
+  setSavedTotal(totalCo2e);
+  setSavedCleanEnergy(cleanEnergy);
+      setModalOpen(true);
     } catch (error) {
       console.error("❌ Failed to submit report:", error);
       const err = error as { message?: string };
@@ -142,30 +187,23 @@ export default function CatatEnergiIndividuPage() {
   }
 
   return (
-    <main className="px-4 pb-28">
-      <header className="mb-3 flex items-center gap-2">
-        <button
-          onClick={() => router.back()}
-          aria-label="Kembali"
-          className="h-9 w-9 grid place-items-center"
-        >
-          <Image src="/arrow-left.svg" alt="" width={18} height={18} />
-        </button>
-        <h1 className="flex-1 text-center text-lg font-semibold">
-          Energi Listrik
-        </h1>
-        <div className="h-9 w-9" />
-      </header>
+    <ScrollContainer
+         headerTitle="Listrik"
+         leftContainer={
+           <button
+             onClick={() => router.back()}
+             aria-label="Kembali"
+             className="h-9 w-9 grid place-items-center"
+           >
+             <Image src="/arrow-left.svg" alt="" width={18} height={18} />
+           </button>
+         }
+       >
 
-      <div
-        className="mx-auto mt-3 h-[2px] w-full"
-        style={{ backgroundColor: "var(--color-primary)" }}
-      />
-
-      <div className="rounded-2xl  p-4 space-y-4">
+      <div className="rounded-2xl p-4 space-y-4">
         <TextField
           id="tgl"
-          label="Tanggal Laporan*"
+          label="Tanggal Laporan"
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
@@ -174,13 +212,13 @@ export default function CatatEnergiIndividuPage() {
 
         <Select
           id="bangunan"
-          label="Pilih bangunan terdaftar*"
+          label="Pilih bangunan terdaftar"
           placeholder={
-            loadingBuildings 
-              ? "Memuat..." 
-              : buildingOptions.length 
-                ? "Pilih Bangunan" 
-                : "Belum ada bangunan"
+            loadingBuildings
+              ? "Memuat..."
+              : buildingOptions.length
+              ? "Pilih Bangunan"
+              : "Belum ada bangunan"
           }
           options={buildingOptions}
           value={buildingId}
@@ -251,15 +289,21 @@ export default function CatatEnergiIndividuPage() {
           </div>
         )}
 
-        <Button 
-          fullWidth 
-          size="lg" 
-          disabled={!canSubmit || isSubmitting} 
-          onClick={handleSave}
-        >
+        <Button fullWidth size="lg" disabled={!canSubmit || isSubmitting} onClick={handleSave}>
           {isSubmitting ? "Menyimpan..." : "Simpan Data"}
         </Button>
       </div>
-    </main>
+
+      {/* Modal sukses simpan */}
+      <ReportSavedModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        reportKind="Energi Listrik"
+        total={savedTotal}
+        unit="kg CO₂e"
+        redirectTo="/app/catat"
+        cleanEnergy={savedCleanEnergy}
+      />
+    </ScrollContainer>
   );
 }

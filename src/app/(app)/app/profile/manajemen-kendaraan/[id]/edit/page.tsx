@@ -48,7 +48,13 @@ export default function EditVehiclePage() {
         if (foundVehicle) {
           setVehicle(foundVehicle);
           setName(foundVehicle.name);
-          setEmissionFactorId(foundVehicle.emission_factor_id);
+            setEmissionFactorId(foundVehicle.emission_factor_id);
+            // initialize selects from metadata if available
+            const meta = foundVehicle.metadata;
+            if (meta) {
+              if (meta.vehicle_type) setVehicleType(meta.vehicle_type as string);
+              if (meta.capacity_range) setCapacityRange(meta.capacity_range as string);
+            }
         }
       } catch (error) {
         console.error("Failed to fetch vehicle:", error);
@@ -59,6 +65,9 @@ export default function EditVehiclePage() {
 
     fetchVehicle();
   }, [id, getIdToken]);
+
+  // Load fuel products list (for the fuel product select) and keep in sync with selected emission factor
+  // NOTE: fuel product selection removed for takeout flow — no longer loading fuel products here
 
   // Load vehicle types on mount
   useEffect(() => {
@@ -131,15 +140,62 @@ export default function EditVehiclePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // TODO: Implement PUT /vehicle-assets/:id
-    console.log("Update vehicle:", {
-      id,
-      name,
-      emissionFactorId,
-    });
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        alert('Token tidak tersedia. Silakan login kembali.');
+        return;
+      }
 
-    // For now, just go back
-    router.back();
+      // Build payload expected by backend
+      // derive fuel_type from selected emission factor if available
+      const selectedFuel = fuelOptions.find((f) => f.id === emissionFactorId)?.fuelType;
+
+      const payload: Partial<import('@/services/assets').CreateVehiclePayload> = {
+        name,
+        emission_factor_id: emissionFactorId,
+        // Include user_id if available — backend may require it for validation
+        user_id: vehicle?.user_id || undefined,
+        metadata: {
+          vehicle_type: vehicleType || undefined,
+          capacity_range: capacityRange || undefined,
+          fuel_type: selectedFuel || undefined,
+          // persist selected fuel product if set in the editor (allow saving)
+          // fuel_product intentionally omitted in this edit flow (takeout)
+        },
+  // Always set active:true on update so edited vehicles become active
+  active: true,
+      };
+
+      console.debug('Updating vehicle with payload:', payload);
+
+      let updated = await assetsService.updateVehicle(id as string, payload, token);
+      console.log('✅ Vehicle update response:', updated);
+
+      // Some backends respond to PUT with no data (data: null/undefined).
+      // If the update returned undefined, re-fetch the canonical vehicle to verify persistence.
+      if (!updated) {
+        try {
+          console.warn('Update returned no data — re-fetching canonical vehicle to verify.');
+          const check = await assetsService.getVehicle(id as string, token);
+          console.debug('Re-fetched vehicle after update:', check);
+          updated = check as typeof updated;
+        } catch (fetchErr) {
+          console.error('Failed to re-fetch vehicle after update:', fetchErr);
+        }
+      }
+
+      if (!updated) {
+        // Still no data — surface to user and don't blindly navigate back.
+        alert('Pembaruan kendaraan tidak dapat diverifikasi. Silakan periksa jaringan atau coba lagi.');
+        return;
+      }
+
+      router.back();
+    } catch (err) {
+      console.error('Failed to update vehicle:', err);
+      alert(err instanceof Error ? err.message : 'Gagal menyimpan kendaraan');
+    }
   };
 
   if (loading) {
@@ -151,19 +207,19 @@ export default function EditVehiclePage() {
   }
 
   if (!vehicle) {
-    return (
       <main className="mx-auto max-w-screen-sm px-4 py-8">
         <p className="text-center text-sm text-black/60">Kendaraan tidak ditemukan.</p>
         <div className="mt-4 text-center">
           <Button onClick={() => router.back()}>Kembali</Button>
         </div>
       </main>
-    );
+    
   }
 
   const vehicleTypeOptions = vehicleTypes?.map((type) => ({ value: type, label: type })) || [];
   const capacityOptions = capacityRanges?.map((range) => ({ value: range, label: range })) || [];
   const fuelTypeOptions = fuelOptions?.map((opt) => ({ value: opt.id, label: opt.fuelType })) || [];
+  
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 pb-28">
@@ -171,7 +227,7 @@ export default function EditVehiclePage() {
         <button onClick={() => router.back()} aria-label="Kembali" className="grid h-9 w-9 place-items-center">
           <Image src="/arrow-left.svg" alt="" width={18} height={18} />
         </button>
-        <h1 className="flex-1 text-center text-lg font-semibold">Edit Kendaraan</h1>
+        <h1 className="flex-1 text-center text-lg font-semibold text-black">Edit Kendaraan</h1>
         <div className="h-9 w-9" />
       </header>
       <div className="mx-auto mt-3 h-0.5 w-full" style={{ backgroundColor: "var(--color-primary)" }} />
@@ -237,6 +293,8 @@ export default function EditVehiclePage() {
           disabled={!capacityRange || loadingFuels}
           required
         />
+
+        {/* Produk bahan bakar: di-takeout/disabled — tidak ditampilkan di UI edit ini */}
 
         <div className="grid grid-cols-2 gap-3">
           <Button type="button" variant="outline" onClick={() => router.back()}>

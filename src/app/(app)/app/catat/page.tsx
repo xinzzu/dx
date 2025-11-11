@@ -1,7 +1,6 @@
-// src/app/(app)/app/catat/page.tsx
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
@@ -11,154 +10,185 @@ import CategoryItem from "@/components/shared/catat/CategoryItem";
 import ReportRow from "@/components/shared/catat/ReportRow";
 import EmptySavedBox from "@/components/shared/catat/EmptySavedBox";
 import ResultCard from "@/components/shared/catat/ResultCard";
+import { useCatatContext } from "./catat-context";
+import ScrollContainer from "@/components/nav/ScrollContainer";
 
 type SavedReport = {
-  id: string;
-  title: string;    // "Transportasi"
-  dateISO: string;  // "2025-10-20"
-  amount: number;   // 375
+  id: string; // transport|electricity|food|waste (atau unknown)
+  title: string;
+  amount: number;
   href: string;
 };
 
-const INITIAL_REPORTS: SavedReport[] = [
-  {
-  
-    id: "t",
-    title: "Transportasi",
-    dateISO: "2025-10-20",
-    amount: 375,
-    href: "/app/catat/transportasi?month=2025-10",
-  },
-  {
-    id: "l",
-    title: "Energi Listrik",
-    dateISO: "2025-10-20",
-    amount: 625,
-    href: "/app/catat/listrik?month=2025-10",
-  },
-  {
-    id: "m",
-    title: "Konsumsi Makanan",
-    dateISO: "2025-10-20",
-    amount: 250,
-    href: "/app/catat/makanan?month=2025-10",
-  },
-];
+type CatKey = "transport" | "electricity" | "food" | "waste";
+
+const slugByKey: Record<CatKey, string> = {
+  transport: "transportasi",
+  electricity: "energi-listrik",
+  food: "konsumsi-makanan",
+  waste: "produksi-sampah",
+};
+
+// Bridge: id di CatatContext -> kunci internal
+const contextIdToKey: Record<string, CatKey | undefined> = {
+  transport: "transport",
+  listrik: "electricity",
+  makanan: "food",
+  sampah: "waste",
+};
+
+const normalizeBackendId = (name: string): CatKey | null => {
+  const n = (name || "").toLowerCase().trim();
+  if (n.includes("transport")) return "transport";
+  if (n.includes("listrik") || n.includes("electric")) return "electricity";
+  if (n.includes("food") || n.includes("makan")) return "food";
+  if (n.includes("sampah") || n.includes("limbah") || n.includes("waste")) return "waste";
+  return null;
+};
 
 export default function CatatIndividuPage() {
   const router = useRouter();
   const { getIdToken } = useAuth();
-  
+
   const [totalThisMonth, setTotalThisMonth] = useState(0);
-  // NOTE:
-  // - Untuk melihat EMPTY STATE: ubah nilai awal ini menjadi [].
-  const [reports] = useState<SavedReport[]>(INITIAL_REPORTS);
+  const [reports, setReports] = useState<SavedReport[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const total = useMemo(
-    () => reports.reduce((sum, r) => sum + r.amount, 0),
-    [reports]
-  );
+  const basePath = "/app/catat";
+  const { categories } = useCatatContext();
 
-  // Helper to get backend token
   const getBackendToken = useCallback(async (): Promise<string | null> => {
     const { authService } = await import("@/services/auth");
     let backendToken = authService.getToken();
-    
+
     if (!backendToken) {
       const firebaseToken = await getIdToken();
       if (!firebaseToken) return null;
-      
+
       backendToken = await authService.loginWithGoogle(firebaseToken);
       authService.saveToken(backendToken);
     }
-    
     return backendToken;
   }, [getIdToken]);
 
-  // Fetch carbon footprint from backend
   useEffect(() => {
-    async function fetchCarbonFootprint() {
+    let mounted = true;
+
+    async function fetchCarbonDataAndBreakdown() {
+      setIsLoading(true);
       try {
         const token = await getBackendToken();
         if (!token) {
           console.warn("⚠️ No token available");
+          if (mounted) setIsLoading(false);
           return;
         }
 
         const { reportsService } = await import("@/services/reports");
-        const data = await reportsService.getCurrentCarbonFootprint(token);
-        
-        console.log("📊 Carbon footprint data (Catat):", data);
-        
-        // Format: ambil 4 digit dari depan (pembulatan ke 1 desimal)
-        const current = Math.round(data.current_month_total_kgco2e * 10) / 10;
-        setTotalThisMonth(current);
+        const dashboardResp = await reportsService.getDashboard(token, "month").catch(() => null);
+        const footprintResp = await reportsService.getCurrentCarbonFootprint(token).catch(() => null);
+
+        if (dashboardResp?.breakdown_chart) {
+          const backendCats = dashboardResp.breakdown_chart.categories || [];
+
+          const mapped: SavedReport[] = backendCats
+            .filter((bc) => (bc.value_kg_co2e ?? 0) > 0)
+            .map((bc: { name?: string; value_kg_co2e?: number }) => {
+              const totalEmission = Math.round((bc.value_kg_co2e ?? 0) * 10) / 10;
+              const backendName = bc.name ?? "";
+              const backendKey = normalizeBackendId(backendName);
+
+              const categoryDetail =
+                backendKey &&
+                categories.find((c) => contextIdToKey[c.id] === backendKey);
+
+              const displayTitle =
+                categoryDetail?.title ?? (backendName !== "" ? backendName : "Kategori Lainnya");
+
+              const href = backendKey
+                ? `${basePath}/laporan/${slugByKey[backendKey]}`
+                : `${basePath}/detail-laporan`;
+
+              const resolvedId = backendKey ?? (backendName !== "" ? backendName : `unknown-${totalEmission}`);
+
+              return {
+                id: resolvedId as string,
+                title: displayTitle,
+                amount: totalEmission,
+                href,
+              };
+            })
+            .filter((r) => {
+              const k = r.id as string;
+              const isCatKey = (["transport","electricity","food","waste"] as string[]).includes(k);
+              return !isCatKey || categories.some((c) => contextIdToKey[c.id] === (k as CatKey));
+            });
+
+          if (mounted) setReports(mapped);
+        } else {
+          if (mounted) setReports([]);
+        }
+
+        if (footprintResp) {
+          const current = Math.round((Number(footprintResp.current_month_total_kgco2e ?? 0) * 10)) / 10;
+          if (mounted) setTotalThisMonth(current);
+        }
       } catch (error) {
-        console.error("❌ Failed to fetch carbon footprint:", error);
+        console.error("❌ Failed to fetch carbon data for Catat:", error);
+        if (mounted) setReports([]);
+      } finally {
+        if (mounted) setIsLoading(false);
       }
     }
 
-    fetchCarbonFootprint();
-  }, [getBackendToken]);
+    fetchCarbonDataAndBreakdown();
+    return () => {
+      mounted = false;
+    };
+  }, [getBackendToken, categories, basePath]);
 
   return (
-    <main className="min-h-dvh bg-white text-black">
-      <div className="mx-auto max-w-lg px-4 pb-[88px] pt-6">
-        {/* Title + Subtitle */}
-        <header className="text-center">
-          <h1 className="text-2xl font-semibold">Catat Emisi Karbon</h1>
-          <p className="mt-1 text-sm text-black/60">Hitung jejak karbon bulanan Anda</p>
-        </header>
-
-        {/* Divider hijau tipis */}
-        <div
-          className="mx-auto mt-3 h-[2px] w-full"
-          style={{ backgroundColor: "var(--color-primary)" }}
-        />
-
-        {/* Pilih Kategori */}
+    <ScrollContainer
+      headerTitle="Catat Emisi Karbon"
+      headerSubTitle="Hitung jejak karbon bulanan Anda"
+      showBottomLine={true}
+    >
+      <div className="mx-auto max-w-lg pb-[88px]">
+        {/* PILIH KATEGORI → ke FORM */}
         <section className="mt-5">
           <h2 className="mb-2 text-base font-semibold">Pilih Kategori</h2>
-
           <div className="space-y-3">
-            <CategoryItem
-              iconSrc="/images/catat/transport.png"
-              title="Transportasi"
-              subtitle="Kendaraan operasional"
-              href="/app/catat/transportasi"
-            />
-            <CategoryItem
-              iconSrc="/images/catat/energy.png"
-              title="Penggunaan Listrik"
-              subtitle="Konsumsi energi listrik"
-              href="/app/catat/energi-listrik"
-            />
-            <CategoryItem
-              iconSrc="/images/catat/plastic.png"
-              title="Konsumsi Makanan"
-              subtitle="Makanan yang Anda konsumsi"
-              href="/app/catat/konsumsi-makanan"
-            />
+            {categories.map((c) => (
+              <CategoryItem
+                key={c.id}
+                iconSrc={c.iconSrc}
+                title={` ${c.title}`}
+                subtitle={c.subtitle}
+                href={c.href(basePath)}
+              />
+            ))}
           </div>
         </section>
 
-        {/* Laporan Tersimpan Bulan ini */}
+        {/* LAPORAN TERSIMPAN BULAN INI → ke LIST per-kategori */}
         <section className="mt-6">
           <div className="mb-2 flex items-center gap-2">
             <Image alt="" src="/images/catat/pencil-bolt.png" width={30} height={30} />
             <h3 className="text-base font-semibold">Laporan Tersimpan Bulan ini</h3>
           </div>
 
-          {reports.length === 0 ? (
+          {isLoading ? (
+            <div className="p-4 text-center text-sm text-black/60">Memuat laporan...</div>
+          ) : reports.length === 0 ? (
             <EmptySavedBox />
           ) : (
-            <div className="space-y-3 mt-4">
+            <div className="mt-4 space-y-3">
               {reports.map((r) => (
                 <ReportRow
                   key={r.id}
                   title={r.title}
-                  dateISO={r.dateISO}
                   amount={r.amount}
+                  subtitle={`Total Emisi : ${r.amount} kg CO₂e`}
                   href={r.href}
                 />
               ))}
@@ -166,13 +196,12 @@ export default function CatatIndividuPage() {
           )}
         </section>
 
-        {/* Hasil Perhitungan */}
+        {/* HASIL PERHITUNGAN */}
         <section className="mt-8 text-center">
           <h3 className="mb-3 text-base font-semibold">Hasil Perhitungan</h3>
           <ResultCard value={totalThisMonth} />
         </section>
 
-        {/* CTA ke Riwayat */}
         <div className="mt-6">
           <Button
             size="lg"
@@ -184,6 +213,6 @@ export default function CatatIndividuPage() {
           </Button>
         </div>
       </div>
-    </main>
+    </ScrollContainer>
   );
 }

@@ -7,14 +7,28 @@
   --foreground: #171717;
 }
 
+@layer base {
+  button {
+    cursor: pointer;
+    transition: all 150ms ease-in-out; 
+  }
+
+  button:not(:disabled):hover {
+    opacity: 0.95;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
 }
-
-
 
 html{
   scrollbar-gutter: stable-both-edges;
@@ -26,5 +40,10 @@ body {
   font-family: var(--font-poppins), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-y: scroll; min-height: 100dvh;
 }
+
+@media screen and (orientation: portrait) and (max-width: 767px) {
+            .max-width-container {
+              max-width: 100vw;
+            }
+          }

@@ -22,6 +22,8 @@ export type ApplianceId =
 // ====== ENTITAS ======
 export type Building = {
   id: string;
+  // apiId - optional id returned by backend when the building is persisted
+  apiId?: string;
   name: string;
   categoryId: string;     // ID from electricity-tariff-categories API
   categoryName: string;   // Display name (e.g., "Rumah Tangga Subsidi")
@@ -44,6 +46,7 @@ export type Building = {
 
 export type Vehicle = {
   id: string;
+  apiId?: string;
   name: string;
   type: "mobil" | "motor" | "bus" | "truk" | "lainnya";
 
@@ -63,7 +66,8 @@ type State = {
   buildings: Building[];
   vehicles: Vehicle[];
 
-  addBuilding: (b: Omit<Building, "id">) => void;
+  // allow providing an optional id/apiId when adding (used when syncing from API)
+  addBuilding: (b: Omit<Building, "id"> & { id?: string; apiId?: string }) => void;
   updateBuilding: (id: string, patch: Partial<Building>) => void;
   setBuildingAppliances: (
     id: string,
@@ -71,7 +75,8 @@ type State = {
   ) => void;
   removeBuilding: (id: string) => void;
 
-  addVehicle: (v: Omit<Vehicle, "id">) => void;
+  // allow optional id/apiId when syncing from API
+  addVehicle: (v: Omit<Vehicle, "id"> & { id?: string; apiId?: string }) => void;
   updateVehicle: (id: string, patch: Partial<Vehicle>) => void;
   removeVehicle: (id: string) => void;
 
@@ -85,10 +90,19 @@ export const useAssetWizard = create<State>()(
       vehicles: [],
 
       // ===== Building =====
-      addBuilding: (b) =>
+      addBuilding: (b) => {
+        const p = b as unknown as Omit<Building, "id"> & { id?: string; apiId?: string };
         set({
-          buildings: [...get().buildings, { ...b, id: crypto.randomUUID() }],
-        }),
+          buildings: [
+            ...get().buildings,
+            {
+              ...(p as Omit<Building, "id">),
+              id: p.id ?? crypto.randomUUID(),
+              apiId: p.apiId,
+            } as Building,
+          ],
+        });
+      },
 
       updateBuilding: (id, patch) =>
         set({
@@ -110,10 +124,12 @@ export const useAssetWizard = create<State>()(
         set({ buildings: get().buildings.filter((x) => x.id !== id) }),
 
       // ===== Vehicle =====
-      addVehicle: (v) =>
+      addVehicle: (v) => {
+        const p = v as unknown as Omit<Vehicle, "id"> & { id?: string; apiId?: string };
         set({
-          vehicles: [...get().vehicles, { ...v, id: crypto.randomUUID() }],
-        }),
+          vehicles: [...get().vehicles, { ...(p as Omit<Vehicle, "id">), id: p.id ?? crypto.randomUUID(), apiId: p.apiId } as Vehicle],
+        });
+      },
 
       updateVehicle: (id, patch) =>
         set({

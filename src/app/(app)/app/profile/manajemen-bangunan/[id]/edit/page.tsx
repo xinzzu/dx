@@ -376,7 +376,9 @@ export default function EditBuildingPage() {
 
   const tariffOptions = tariffs?.map((tariff) => ({
     value: tariff.id,
-    label: `${tariff.power_capacity_label} (Rp ${tariff.rate_per_kwh.toLocaleString("id-ID")}/kWh)`,
+    label: tariff.rate_per_kwh
+      ? `${tariff.power_capacity_label} (Rp ${Number(tariff.rate_per_kwh).toLocaleString("id-ID")}/kWh)`
+      : tariff.power_capacity_label,
   })) || [];
 
   const provinceOptions = provinces?.map((p) => ({
@@ -405,7 +407,7 @@ export default function EditBuildingPage() {
         <button onClick={() => router.back()} aria-label="Kembali" className="grid h-9 w-9 place-items-center">
           <Image src="/arrow-left.svg" alt="" width={18} height={18} />
         </button>
-        <h1 className="flex-1 text-center text-lg font-semibold">Edit Bangunan</h1>
+        <h1 className="flex-1 text-center text-lg font-semibold text-black">Edit Bangunan</h1>
         <div className="h-9 w-9" />
       </header>
       <div className="mx-auto mt-3 h-0.5 w-full" style={{ backgroundColor: "var(--color-primary)" }} />

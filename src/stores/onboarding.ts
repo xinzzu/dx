@@ -6,6 +6,8 @@ import { persist } from "zustand/middleware";
 const STORE_VERSION = 2;
 
 type State = {
+  // hydration flag supaya UI bisa tunjukkan skeleton sampai store restore selesai
+  hydrated: boolean;
   activated: boolean;
   profileCompleted: boolean;
   onboardingCompleted: boolean;
@@ -20,7 +22,10 @@ type State = {
 };
 
 type Actions = {
+  setHydrated: () => void;
   markActivated: () => void;
+  // explicit setter so external flows (e.g. magic-link exchange) can mark activated
+  setActivated: (v: boolean) => void;
   markProfileCompleted: () => void;
   markOnboardingCompleted: () => void;
 
@@ -33,11 +38,16 @@ type Actions = {
   resetOnboarding: () => void;
   replayFirstShortcut: () => void;
 
+  // sync onboarding state with auth layer (checks backend JWT presence)
+  syncWithAuth: () => Promise<void>;
+
 };
 
 export const useOnboarding = create<State & Actions>()(
   persist(
-    (set, get) => ({
+  (set, get) => ({
+  // hydration flag: false sampai persist selesai rehydrate
+  hydrated: false,
       activated: false,
       profileCompleted: false,
       onboardingCompleted: false,
@@ -53,14 +63,14 @@ export const useOnboarding = create<State & Actions>()(
       markOnboardingCompleted: () => set({ onboardingCompleted: true }),
 
       markAssetsBuildingsCompleted: () =>
-        set((s) => ({
+        set(() => ({
           assetsBuildingsCompleted: true,
-          assetsCompleted: true && s.assetsVehiclesCompleted,
+          assetsCompleted: Boolean(get().assetsVehiclesCompleted),
         })),
       markAssetsVehiclesCompleted: () =>
-        set((s) => ({
+        set(() => ({
           assetsVehiclesCompleted: true,
-          assetsCompleted: s.assetsBuildingsCompleted && true,
+          assetsCompleted: Boolean(get().assetsBuildingsCompleted),
         })),
       markAssetsCompleted: () =>
         set({
@@ -71,6 +81,21 @@ export const useOnboarding = create<State & Actions>()(
 
       markShortcutSeen: () => set({ shortcutSeen: true }),
 
+  setHydrated: () => set({ hydrated: true }),
+
+      setActivated: (v: boolean) => set({ activated: v }),
+
+      // check if there's a backend token saved and update 'activated' accordingly
+      syncWithAuth: async () => {
+        try {
+          const { authService } = await import("@/services/auth");
+          const token = typeof authService?.getToken === "function" ? authService.getToken() : undefined;
+          set({ activated: Boolean(token) });
+        } catch {
+          // ignore failures; do not crash app if auth service import fails
+        }
+      },
+
       resetOnboarding: () =>
         set({
           activated: false,
@@ -80,40 +105,43 @@ export const useOnboarding = create<State & Actions>()(
           assetsVehiclesCompleted: false,
           assetsCompleted: false,
           shortcutSeen: false,
+          // keep hydrated as-is; rehydration state is orthogonal to resetting onboarding
         }),
-        replayFirstShortcut: () =>
-  set((s) => ({
-    assetsCompleted: true,  // pastikan kondisi pemicu terpenuhi
-    shortcutSeen: false,    // tampilkan lagi
-    // biarkan assetsBuildingsCompleted / assetsVehiclesCompleted apa adanya
-  })),
+      replayFirstShortcut: () =>
+        set({
+          assetsCompleted: true, // pastikan kondisi pemicu terpenuhi
+          shortcutSeen: false, // tampilkan lagi
+          // biarkan assetsBuildingsCompleted / assetsVehiclesCompleted apa adanya
+        }),
 
     }),
     {
       name: "onboarding-progress",
       version: STORE_VERSION,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      migrate: (persisted: any, from) => {
+      migrate: (persisted: unknown, from) => {
         if (!persisted || typeof persisted !== "object") return persisted;
+        const p = persisted as Record<string, unknown>;
         if (from === 0 || from === 1) {
           return {
-            activated: !!persisted.activated,
-            profileCompleted: !!persisted.profileCompleted,
-            onboardingCompleted: !!persisted.onboardingCompleted,
+            // hydrated tetap false saat migrasi; onRehydrateStorage akan menandainya
+            hydrated: false,
+            activated: Boolean(p.activated ?? false),
+            profileCompleted: Boolean(p.profileCompleted ?? false),
+            onboardingCompleted: Boolean(p.onboardingCompleted ?? false),
 
-            assetsBuildingsCompleted: !!persisted.assetsBuildingsCompleted,
-            assetsVehiclesCompleted: Boolean(persisted.assetsVehiclesCompleted ?? false),
+            assetsBuildingsCompleted: Boolean(p.assetsBuildingsCompleted ?? false),
+            assetsVehiclesCompleted: Boolean(p.assetsVehiclesCompleted ?? false),
             assetsCompleted: Boolean(
-              (persisted.assetsBuildingsCompleted ?? false) &&
-                (persisted.assetsVehiclesCompleted ?? false)
+              (p.assetsBuildingsCompleted ?? false) && (p.assetsVehiclesCompleted ?? false)
             ),
 
-            shortcutSeen: Boolean(persisted.shortcutSeen ?? false),
+            shortcutSeen: Boolean(p.shortcutSeen ?? false),
           } as State;
         }
         return persisted as State;
       },
       partialize: (s) => ({
+        hydrated: s.hydrated,
         activated: s.activated,
         profileCompleted: s.profileCompleted,
         onboardingCompleted: s.onboardingCompleted,
@@ -122,6 +150,12 @@ export const useOnboarding = create<State & Actions>()(
         assetsCompleted: s.assetsCompleted,
         shortcutSeen: s.shortcutSeen,
       }),
+      // when persist finishes rehydration, flip hydrated flag so UI can stop showing skeleton
+      onRehydrateStorage: () => (state, error) => {
+        if (!error) {
+          state?.setHydrated?.();
+        }
+      },
     }
   )
 );
@@ -133,3 +167,6 @@ export const useCanProceedVehicles = () =>
   useOnboarding((s) => s.assetsBuildingsCompleted);
 export const useCanFinishAssets = () =>
   useOnboarding((s) => s.assetsVehiclesCompleted);
+
+// helper to check rehydration status from components
+export const useIsOnboardingHydrated = () => useOnboarding((s) => s.hydrated);

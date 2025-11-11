@@ -1,13 +1,14 @@
-import React from "react"
-import type { MonthReport } from "./types"
-import { ReportMonthCard } from "./ReportMonthCard"
+"use client";
+
+import type { MonthReport } from "./types";
+import ReportHistoryCard from "./ReportHistoryCard";
 
 export function ReportHistoryList({ reports }: { reports: MonthReport[] }) {
   return (
     <div className="space-y-4">
       {reports.map((r) => (
-        <ReportMonthCard key={r.id} report={r} />
+        <ReportHistoryCard key={r.id} report={r} />
       ))}
     </div>
-  )
+  );
 }

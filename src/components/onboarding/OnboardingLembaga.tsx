@@ -14,7 +14,8 @@ export default function OnboardingLembaga() {
     
     // Kalau assets sudah selesai, langsung ke lembaga dashboard
     if (assetsCompleted) {
-      router.replace("/lembaga");
+      // unified destination: /app (pages inside /app decide rendering by userType)
+      router.replace("/app");
     } else {
       // Kalau belum, lanjut ke setup assets
       router.replace("/setup/lembaga/assets/bangunan");

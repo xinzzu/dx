@@ -3,15 +3,16 @@
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
-type Slice = { key: string; value: number; color: string };
+type Slice = { key: string; value: number; color: string; percentage?: number };
 
-export default function DonutChartLembaga({ data }: { data: Slice[] }) {
-  const total = data.reduce((a, b) => a + b.value, 0);
+export default function DonutChartLembaga({ data, total: totalProp }: { data: Slice[]; total?: number }) {
+  // prefer explicit total if provided by backend; else compute from values
+  const total = typeof totalProp === "number" ? totalProp : data.reduce((a, b) => a + b.value, 0);
 
   return (
     <div className="grid grid-cols-2 items-center gap-4">
       {/* 1. Beri aspek rasio pada container */}
-      <div className="relative w-full" style={{ paddingBottom: '100%' }}> 
+      <div className="relative w-full" style={{ paddingBottom: '100%' }}>
         <div className="absolute inset-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -31,7 +32,7 @@ export default function DonutChartLembaga({ data }: { data: Slice[] }) {
                 startAngle={90}
                 endAngle={-270}
               >
-                {data.map((s, i) => (
+                {data.map((s) => (
                   <Cell key={s.key} fill={s.color} />
                 ))}
               </Pie>
@@ -43,7 +44,8 @@ export default function DonutChartLembaga({ data }: { data: Slice[] }) {
       {/* Legend kanan (stack) */}
       <ul className="space-y-2">
         {data.map((s) => {
-          const pct = Math.round((s.value / total) * 100);
+          // Prefer percentage provided by backend if present, otherwise compute
+          const pct = typeof s.percentage === "number" ? Math.round(s.percentage) : Math.round((total === 0 ? 0 : (s.value / total) * 100));
           return (
             <li key={s.key} className="flex items-center gap-3">
               <span
@@ -59,6 +61,7 @@ export default function DonutChartLembaga({ data }: { data: Slice[] }) {
           );
         })}
       </ul>
+      {/* Note: center total was removed to avoid duplicate total showing under charts */}
     </div>
   );
 }

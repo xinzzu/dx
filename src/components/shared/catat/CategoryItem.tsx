@@ -32,7 +32,7 @@ export default function CategoryItem({
       type="button"
       onClick={handle}
       className={clsx(
-        "w-full rounded-2xl border px-4 py-3 text-left",
+        "w-full rounded-2xl border px-4 py-3 text-left cursor-pointer hover:shadow-md",
         "bg-white shadow-[0_8px_24px_rgba(0,0,0,.04)]",
         "flex items-center gap-3",
         "border-[color:var(--color-primary)]",

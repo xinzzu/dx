@@ -2,31 +2,24 @@
 
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import ScrollContainer from "@/components/nav/ScrollContainer";
 
 export default function TermsPage() {
   const router = useRouter();
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
-      {/* Header dengan Tombol Kembali */}
-      <header className="sticky top-0 z-10 flex items-center w-full h-16 px-4 bg-white border-b border-gray-200">
-        <button
-          onClick={() => router.back()}
-          className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200"
-          aria-label="Kembali"
-        >
-          <Image
-            src="/arrow-left.svg"
-            width={24}
-            height={24}
-            alt="Kembali"
-          />
-        </button>
-        <h1 className="flex-1 text-lg font-semibold text-center text-gray-800">
-          Syarat & Ketentuan
-        </h1>
-        <div className="w-8"></div> {/* Spacer untuk menyeimbangkan judul */}
-      </header>
+     <ScrollContainer
+                 headerTitle="Syarat dan Ketentuan"
+                 leftContainer={
+                   <button
+                     onClick={() => router.back()}
+                     aria-label="Kembali"
+                     className="h-9 w-9 grid place-items-center"
+                   >
+                     <Image src="/arrow-left.svg" alt="" width={18} height={18} />
+                   </button>
+                 }
+               >
 
       {/* Konten */}
       <main className="flex-grow p-6 text-gray-700">
@@ -135,6 +128,6 @@ export default function TermsPage() {
           </p>
         </div>
       </main>
-    </div>
+    </ScrollContainer>
   );
 }

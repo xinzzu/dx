@@ -10,33 +10,81 @@ build_and_push_frontend:
   image: docker:28
   services:
     - docker:28-dind
+  tags:
+    - vps-deployer
   script:
     - echo "$CI_DEPLOY_TOKEN" | docker login -u "$CI_DEPLOY_USER" --password-stdin "$CI_REGISTRY"
-    - docker pull "$FRONTEND_IMAGE_TAG" || true
     
     - |
-      docker build \
-        --cache-from "$FRONTEND_IMAGE_TAG" \
-        --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY \
-        --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN \
-        --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID \
-        --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET \
-        --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID \
-        --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID \
-        -t "$FRONTEND_IMAGE_TAG" .
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        echo "Setting Production ENV variables"
+        TAG="latest"
+        export ARG_FIREBASE_API_KEY=$PROD_NEXT_PUBLIC_FIREBASE_API_KEY
+        export ARG_FIREBASE_AUTH_DOMAIN=$PROD_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        export ARG_FIREBASE_PROJECT_ID=$PROD_NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        export ARG_FIREBASE_STORAGE_BUCKET=$PROD_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        export ARG_FIREBASE_MESSAGING_SENDER_ID=$PROD_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        export ARG_FIREBASE_APP_ID=$PROD_NEXT_PUBLIC_FIREBASE_APP_ID
+        export ARG_FIREBASE_MEASUREMENT_ID=$PROD_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+        export ARG_API_BASE_URL=$PROD_NEXT_PUBLIC_API_BASE_URL
+      
+      elif [ "$CI_COMMIT_BRANCH" == "staging" ]; then
+        echo "Setting Staging ENV variables"
+        TAG="staging"
+        export ARG_FIREBASE_API_KEY=$STAGING_NEXT_PUBLIC_FIREBASE_API_KEY
+        export ARG_FIREBASE_AUTH_DOMAIN=$STAGING_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        export ARG_FIREBASE_PROJECT_ID=$STAGING_NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        export ARG_FIREBASE_STORAGE_BUCKET=$STAGING_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        export ARG_FIREBASE_MESSAGING_SENDER_ID=$STAGING_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        export ARG_FIREBASE_APP_ID=$STAGING_NEXT_PUBLIC_FIREBASE_APP_ID
+        export ARG_FIREBASE_MEASUREMENT_ID=$STAGING_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+        export ARG_API_BASE_URL=$STAGING_NEXT_PUBLIC_API_BASE_URL
+      
+      else
+        echo "Branch not configured for build"
+        exit 1
+      fi
 
-    - docker push "$FRONTEND_IMAGE_TAG"
+    - docker pull "$CI_REGISTRY_IMAGE:$TAG" || true
+    - |
+      docker build \
+        --cache-from "$CI_REGISTRY_IMAGE:$TAG" \
+        --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=$ARG_FIREBASE_API_KEY \
+        --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$ARG_FIREBASE_AUTH_DOMAIN \
+        --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=$ARG_FIREBASE_PROJECT_ID \
+        --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$ARG_FIREBASE_STORAGE_BUCKET \
+        --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$ARG_FIREBASE_MESSAGING_SENDER_ID \
+        --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=$ARG_FIREBASE_APP_ID \
+        --build-arg NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=$ARG_FIREBASE_MEASUREMENT_ID \
+        --build-arg NEXT_PUBLIC_API_BASE_URL=$ARG_API_BASE_URL \
+        -t "$CI_REGISTRY_IMAGE:$TAG" .
+        
+    - docker push "$CI_REGISTRY_IMAGE:$TAG"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "staging"
 
-deploy_frontend:
+
+deploy_frontend_prod:
   stage: deploy
   tags:
     - vps-deployer
   script:
     - echo "$CI_DEPLOY_TOKEN" | docker login -u "$CI_DEPLOY_USER" --password-stdin "$CI_REGISTRY"
-    - cd /srv/cahayamu
+    - cd /srv/cahayamu/prod
     - docker compose pull frontend
     - docker compose up -d frontend
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+
+deploy_frontend_staging:
+  stage: deploy
+  tags:
+    - vps-deployer
+  script:
+    - echo "$CI_DEPLOY_TOKEN" | docker login -u "$CI_DEPLOY_USER" --password-stdin "$CI_REGISTRY"
+    - cd /srv/cahayamu/staging
+    - docker compose pull frontend
+    - docker compose up -d frontend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "staging"

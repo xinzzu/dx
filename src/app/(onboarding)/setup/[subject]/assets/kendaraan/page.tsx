@@ -10,7 +10,7 @@ import useAuth from "@/hooks/useAuth";
 import { assetsService, VehicleResponse } from "@/services/assets";
 
 export default function KendaraanPage() {
-  const { vehicles, addVehicle } = useAssetWizard();
+  const { vehicles, addVehicle, reset } = useAssetWizard();
   const { getIdToken } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -27,26 +27,27 @@ export default function KendaraanPage() {
           return;
         }
 
+        reset();
         const apiVehicles = await assetsService.getVehicles(token);
-        
+
         // Convert API vehicles to store format and add to store
         // Only add if store is empty (avoid duplicates on re-render)
         if (vehicles.length === 0 && apiVehicles.length > 0) {
           apiVehicles.forEach((apiVehicle: VehicleResponse) => {
             // Convert API format to store format
             const fuelType = apiVehicle.metadata?.fuel_type?.toLowerCase() || 'bensin';
-            
+
             // Extract data from metadata (already saved by backend)
             const vehicleTypeLabel = (apiVehicle.metadata?.vehicle_type as string) || '';
             const capacityRangeLabel = (apiVehicle.metadata?.capacity_range as string) || '';
-            
+
             // Determine vehicle type from label
             let type: 'mobil' | 'motor' = 'mobil';
-            if (vehicleTypeLabel.toLowerCase().includes('motor') || 
-                vehicleTypeLabel.toLowerCase().includes('sepeda motor')) {
+            if (vehicleTypeLabel.toLowerCase().includes('motor') ||
+              vehicleTypeLabel.toLowerCase().includes('sepeda motor')) {
               type = 'motor';
             }
-            
+
             addVehicle({
               name: apiVehicle.name,
               emissionFactorId: apiVehicle.emission_factor_id,

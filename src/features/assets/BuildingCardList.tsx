@@ -2,7 +2,10 @@
 
 import Image from "next/image";
 import { Trash2 } from "lucide-react";
+import { useState } from "react";
 import { useAssetWizard } from "@/stores/assetWizard";
+import useAuth from "@/hooks/useAuth";
+import { assetsService } from "@/services/assets";
 
 function formatVA(n: number) {
   return `${n.toLocaleString("id-ID")} VA`;
@@ -10,6 +13,8 @@ function formatVA(n: number) {
 
 export default function BuildingCardList() {
   const { buildings, removeBuilding } = useAssetWizard();
+  const { getIdToken } = useAuth();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   if (buildings.length === 0) return null; // empty state ditampilkan di page
 
@@ -45,10 +50,35 @@ export default function BuildingCardList() {
 
             {/* Tombol hapus */}
             <button
-              onClick={() => removeBuilding(b.id)}
+              onClick={async () => {
+                // confirm
+                const ok = window.confirm(`Hapus bangunan \"${b.name}\"?`);
+                if (!ok) return;
+
+                // If this building is persisted on backend (has apiId), call delete API first
+                if (b.apiId) {
+                  try {
+                    setDeletingId(b.id);
+                    const token = await getIdToken();
+                    if (!token) throw new Error("Not authenticated");
+                    await assetsService.deleteBuilding(b.apiId as string, token);
+                    // remove from local store after successful delete
+                    removeBuilding(b.id);
+                  } catch (err) {
+                    console.error("Failed to delete building:", err);
+                    window.alert("Gagal menghapus bangunan. Coba lagi.");
+                  } finally {
+                    setDeletingId(null);
+                  }
+                } else {
+                  // local-only item, just remove
+                  removeBuilding(b.id);
+                }
+              }}
               aria-label={`Hapus ${b.name}`}
               className="text-red-600 hover:text-red-700"
               title="Hapus"
+              disabled={deletingId === b.id}
             >
               <Trash2 size={18} />
               {/* Kalau mau SVG-mu sendiri:

@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 
-export default function AssetsIndex({
-  params,
-}: {
-  params: { subject: "individu" | "lembaga" };
-}) {
-  redirect(`/setup/${params.subject}/assets/bangunan`);
+type AssetsPageProps = {
+  params: Promise<{ subject: "individu" | "lembaga" }>;
+};
+
+export default async function AssetsIndex({ params }: AssetsPageProps) {
+  const { subject } = await params;
+  redirect(`/setup/${subject}/assets/bangunan`);
 }

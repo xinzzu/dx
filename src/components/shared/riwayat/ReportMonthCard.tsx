@@ -41,8 +41,12 @@ export function ReportMonthCard({ report }: { report: MonthReport }) {
         </div>
 
         <div className="space-y-3 rounded-2xl border border-gray-200 p-3">
-          {report.categories.map((c) => (
-            <CategoryItem key={c.id} item={c} />
+          {report.categories.map((c, index) => (
+            <CategoryItem
+              key={c.id}
+              item={c}
+              isLast={index === report.categories.length - 1}
+            />
           ))}
         </div>
       </div>

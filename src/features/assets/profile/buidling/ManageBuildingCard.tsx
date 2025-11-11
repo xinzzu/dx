@@ -4,6 +4,7 @@ import React from "react"
 import Image from "next/image"
 import Button from "@/components/ui/Button"
 import type { BuildingResponse } from "@/services/assets"
+import { formatIDR } from "@/utils/currency"
 
 function fmt(n?: number, unit?: string) {
   if (n == null) return "—"
@@ -43,8 +44,12 @@ export default function ManageBuildingCard({
 
       <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
         <div>
-          <div className="text-black/60">Tarif Listrik</div>
-          <div className="font-semibold text-xs">ID: {data.electricity_tariff_id.slice(0, 8)}...</div>
+          <div className="text-black/60">Daya Listrik</div>
+          <div className="font-semibold text-xs">{data.power_capacity_label}</div>
+        </div>
+        <div>
+          <div className="text-black/60">Tariff Listrik</div>
+          <div className="font-semibold text-xs">{formatIDR(data.electricity_tariff_rate_per_kwh)}/kwh</div>
         </div>
         <div>
           <div className="text-black/60">Luas</div>
@@ -53,8 +58,8 @@ export default function ManageBuildingCard({
         <div>
           <div className="text-black/60">Elektronik</div>
           <div className="font-semibold">
-            {data.metadata?.electronics_inventory 
-              ? Object.keys(data.metadata.electronics_inventory).length 
+            {data.metadata?.electronics_inventory
+              ? Object.keys(data.metadata.electronics_inventory).length
               : 0}
           </div>
         </div>

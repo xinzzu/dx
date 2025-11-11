@@ -4,12 +4,15 @@ import { useRouter } from "next/navigation";
 import ShortcutCard from "./ShortcutCard";
 import { useOnboarding, useShouldShowFirstShortcut } from "@/stores/onboarding";
 
-export default function FirstShortcutCard() {
+export default function FirstShortcutCard({ totalKg }: { totalKg?: number }) {
   const router = useRouter();
   const show = useShouldShowFirstShortcut();
   const { markShortcutSeen } = useOnboarding();
 
-  if (!show) return null;
+  // only show the first-shortcut card when onboarding indicates it AND the
+  // user hasn't recorded any emissions yet (totalKg is falsy/zero).
+  // if (!show) return null; //munculkan terus saja dulu
+  // if (typeof totalKg === "number" && totalKg > 0) return null; //munculkan terus saja dulu
 
   return (
     <ShortcutCard

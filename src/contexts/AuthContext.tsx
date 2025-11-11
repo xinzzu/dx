@@ -180,14 +180,14 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     try {
       await signInWithRedirect(auth, provider);
     } catch (e) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      console.warn("[Auth] redirect failed, trying popup:", (e as any)?.code || e);
+      const warnObj = e as unknown as { code?: string };
+      console.warn("[Auth] redirect failed, trying popup:", warnObj.code ?? e);
       try {
         await signInWithPopup(auth, provider);
       } catch (e2) {
         setLoading(false);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        console.error("[Auth] popup error:", (e2 as any)?.code, (e2 as any)?.message || e2);
+        const errObj = e2 as unknown as { code?: string; message?: string };
+        console.error("[Auth] popup error:", errObj.code, errObj.message ?? e2);
         throw e2;
       }
     }

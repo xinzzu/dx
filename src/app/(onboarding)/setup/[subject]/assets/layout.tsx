@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import RequireProgress from "@/components/guards/RequireProgress";
 import { useAssetWizard } from "@/stores/assetWizard";
+import type { Building, Vehicle } from "@/stores/assetWizard";
 import { useOnboarding } from "@/stores/onboarding";
 import useAuth from "@/hooks/useAuth";
 import { assetsService } from "@/services/assets";
@@ -84,8 +85,48 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         }
 
         // 1. Submit all assets (buildings + vehicles)
-        console.log("📤 Submitting assets...", { buildings: buildingCount, vehicles: vehicleCount, userId });
-        await assetsService.submitAllAssets(buildings, vehicles, userId, token);
+        // Read the current snapshot from the zustand store at the moment of submit to
+        // avoid any possibility of an earlier reset/closure leaving stale values.
+  const getter = (useAssetWizard as unknown as { getState: () => { buildings: unknown[]; vehicles: unknown[] } }).getState;
+        const snapshot = getter();
+
+        // If the zustand snapshot is empty (possible rehydration/reset race),
+        // try to recover persisted data directly from localStorage as a fallback.
+  let buildingsToSubmit = snapshot.buildings;
+  const vehiclesToSubmit = snapshot.vehicles;
+
+        if ((buildingsToSubmit?.length ?? 0) === 0) {
+          try {
+            const raw = typeof window !== "undefined" ? localStorage.getItem("asset-wizard") : null;
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              // Zustand persist stores under `state` by default, but older shapes may store directly.
+              const persisted = parsed?.state ?? parsed;
+              if (persisted && Array.isArray(persisted.buildings) && persisted.buildings.length > 0) {
+                console.debug("[assets-layout] recovered buildings from localStorage persist:", persisted.buildings);
+                buildingsToSubmit = persisted.buildings;
+              }
+            }
+          } catch (e) {
+            console.warn("[assets-layout] failed to recover asset-wizard from localStorage", e);
+          }
+        }
+
+        console.log("📤 Submitting assets...", { buildings: buildingsToSubmit.length, vehicles: vehiclesToSubmit.length, userId });
+        // Debug: print full arrays to ensure buildings are present
+        try {
+          console.debug("[assets-layout] buildings to submit (final):", buildingsToSubmit);
+          console.debug("[assets-layout] vehicles to submit (final):", vehiclesToSubmit);
+        } catch {
+          /* ignore debug failures */
+        }
+
+        await assetsService.submitAllAssets(
+          buildingsToSubmit as unknown as Building[],
+          vehiclesToSubmit as unknown as Vehicle[],
+          userId,
+          token
+        );
         console.log("✅ Assets submitted successfully");
 
         // 2. Mark onboarding complete
