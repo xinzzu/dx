@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAssetWizard } from "@/stores/assetWizard";
+import type { ApplianceId } from '@/stores/assetWizard';
 import EmptyState from "@/features/assets/EmptyState";
 import BuildingCardList from "@/features/assets/BuildingCardList";
 import BuildingForm from "@/features/assets/BuildingForm";
@@ -48,7 +49,45 @@ export default function BangunanPage() {
               kecamatan: apiBuilding.district_code,
               kelurahan: apiBuilding.village_code,
               postalCode: apiBuilding.postal_code ? parseInt(apiBuilding.postal_code) : undefined,
-              appliances: apiBuilding.metadata?.electronics_inventory || {},
+              appliances: (function convertElectronics(src?: unknown): Partial<Record<ApplianceId, number>> {
+                if (!src) return {};
+
+                const toSafeNumber = (v: unknown) => {
+                  const n = Number(v as unknown);
+                  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+                };
+
+                // If it's already a keyed map (legacy)
+                if (typeof src === 'object' && !Array.isArray(src) && src !== null) {
+                  const out: Partial<Record<ApplianceId, number>> = {};
+                  Object.entries(src as Record<string, unknown>).forEach(([k, v]) => {
+                    // normalize key to match store: lowercase, underscores
+                    const key = String(k)
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, '_')
+                      .replace(/^_+|_+$/g, '') as ApplianceId;
+                    out[key] = toSafeNumber(v);
+                  });
+                  return out;
+                }
+
+                // If it's an array of { name, qty }
+                if (Array.isArray(src)) {
+                  const out: Partial<Record<ApplianceId, number>> = {};
+                  (src as Array<Record<string, unknown>>).forEach((it, i) => {
+                    const name = String(it?.name ?? `item_${i}`);
+                    const key = name
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, '_')
+                      .replace(/^_+|_+$/g, '') as ApplianceId;
+                    const qty = it?.qty ?? it?.count ?? it?.quantity ?? it?.jumlah ?? 0;
+                    out[key] = toSafeNumber(qty);
+                  });
+                  return out;
+                }
+
+                return {};
+              })(apiBuilding.metadata?.electronics_inventory),
             });
           });
         }

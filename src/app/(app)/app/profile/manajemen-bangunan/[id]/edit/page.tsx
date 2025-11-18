@@ -12,6 +12,8 @@ import { areaService, Province, Regency, District, Village } from "@/services/ar
 import { electricityService, ElectricityCategory, ElectricityTariff } from "@/services/electricity";
 import ApplianceSheet from "@/features/assets/profile/buidling/ApplianceSheet";
 import type { ApplianceId } from "@/stores/assetWizard";
+import { toast } from "sonner";
+import { userFriendlyError } from "@/lib/userError";
 
 export default function EditBuildingPage() {
   const router = useRouter();
@@ -37,6 +39,67 @@ export default function EditBuildingPage() {
   const [appliances, setAppliances] = useState<Partial<Record<ApplianceId, number>>>({});
   const [showApplianceSheet, setShowApplianceSheet] = useState(false);
 
+  // Helpers: convert between object-map <-> array used by ApplianceSheet
+  const normalizeKey = (name: string, idx = 0) =>
+    String(name || `item_${idx}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+  type ApplianceArrayItem = { id: string; name: string; count: number };
+
+  const toSafeNumber = (v: unknown) => {
+    const n = Number(v as unknown);
+    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  };
+
+  const appliancesToArray = (src?: unknown): ApplianceArrayItem[] => {
+    if (!src) return [];
+
+    // If source is already an array of objects (from newer flows)
+    if (Array.isArray(src)) {
+      return src.map((it, idx) => {
+        const obj = (it ?? {}) as Record<string, unknown>;
+        // Support multiple possible numeric fields coming from different flows:
+        // `count`, `qty`, `quantity`, or localized `jumlah`.
+        const rawCount = obj.count ?? obj.qty ?? obj.quantity ?? obj.jumlah;
+        return {
+          id: String(obj.id ?? `${Date.now()}-${idx}`),
+          name: String(obj.name ?? `Item ${idx + 1}`),
+          count: toSafeNumber(rawCount),
+        };
+      });
+    }
+
+    // If source is an object map { servers: 5, ac_units: 2 }
+    if (typeof src === "object" && src !== null) {
+      // Humanize keys for display: convert underscores/dashes to spaces
+      const humanize = (s: string) =>
+        String(s)
+          .replace(/[_-]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      return Object.entries(src as Record<string, unknown>).map(([k, v], i) => ({
+        id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        name: humanize(k),
+        count: toSafeNumber(v),
+      }));
+    }
+
+    return [];
+  };
+
+  const arrayToAppliances = (arr: { id?: string; name: string; count: number }[]) => {
+    const out: Partial<Record<ApplianceId, number>> = {};
+    arr.forEach((it, i) => {
+      const name = String(it?.name ?? `item_${i}`);
+      const key = normalizeKey(name, i) as ApplianceId;
+      out[key] = toSafeNumber(it?.count);
+    });
+    return out;
+  };
+
   // API Data for electricity
   const [categories, setCategories] = useState<ElectricityCategory[]>([]);
   const [tariffs, setTariffs] = useState<ElectricityTariff[]>([]);
@@ -52,6 +115,7 @@ export default function EditBuildingPage() {
   const [loadingRegencies, setLoadingRegencies] = useState(false);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [loadingVillages, setLoadingVillages] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Fetch building data
   useEffect(() => {
@@ -60,66 +124,113 @@ export default function EditBuildingPage() {
         const token = authService.getToken();
         if (!token) return;
 
-        const buildings = await assetsService.getBuildings(token);
-        const foundBuilding = buildings.find((b) => b.id === id);
+        // Try to fetch a single building resource first (preferred)
+        let foundBuilding = null as BuildingResponse | null;
+
+        try {
+          foundBuilding = await assetsService.getBuilding(id, token);
+        } catch (err) {
+          // If single-get not available or fails, fallback to listing and find
+          console.warn('fetchBuilding: getBuilding failed, falling back to getBuildings', err);
+          try {
+            const buildings = await assetsService.getBuildings(token);
+            foundBuilding = buildings.find((b) => b.id === id) || null;
+          } catch (err2) {
+            console.error('fetchBuilding: getBuildings fallback also failed', err2);
+            foundBuilding = null;
+          }
+        }
 
         if (foundBuilding) {
+          console.log(foundBuilding);
+
           setBuilding(foundBuilding);
-          setName(foundBuilding.name);
-          
+          setName(foundBuilding.name || '');
+
           // Will set tariffId and categoryId after fetching categories
           const savedTariffId = foundBuilding.electricity_tariff_id;
-          
-          setLuas(foundBuilding.metadata?.area_sqm?.toString() || "");
-          setAlamatJalan(foundBuilding.full_address || "");
-          
+
+          setLuas(foundBuilding.metadata?.area_sqm?.toString() || '');
+          setAlamatJalan(foundBuilding.full_address || '');
+
           // Debug: Check area codes from backend
-          console.log("📍 Building area codes from backend:", {
+          console.log('📍 Building area codes from backend:', {
             province: foundBuilding.province_code,
             regency: foundBuilding.regency_code,
             district: foundBuilding.district_code,
             village: foundBuilding.village_code,
+            postal_code: foundBuilding.postal_code,
           });
-          
-          setProvinsi(foundBuilding.province_code);
-          setKabKota(foundBuilding.regency_code);
-          setKecamatan(foundBuilding.district_code);
-          setKelurahan(foundBuilding.village_code);
-          setPostalCode(foundBuilding.postal_code || "");
-          
+
+          // Populate area selects in sequence to avoid race/mismatch between
+          // parent/child dropdowns (province -> regency -> district -> village).
+          const provCode = foundBuilding.province_code.startsWith('id') ? foundBuilding.province_code : 'id' + foundBuilding.province_code;
+          const regCode = foundBuilding.regency_code.startsWith('id') ? foundBuilding.regency_code : 'id' + foundBuilding.regency_code;
+          const distCode = foundBuilding.district_code.startsWith('id') ? foundBuilding.district_code : 'id' + foundBuilding.district_code;
+          const villCode = foundBuilding.village_code.startsWith('id') ? foundBuilding.village_code : 'id' + foundBuilding.village_code;
+
+          setProvinsi(provCode);
+          setKabKota(regCode);
+          setKecamatan(distCode);
+          setKelurahan(villCode);
+          setPostalCode(foundBuilding.postal_code || '');
+
           // Load appliances from metadata.electronics_inventory
           if (foundBuilding.metadata?.electronics_inventory) {
-            setAppliances(foundBuilding.metadata.electronics_inventory as Partial<Record<ApplianceId, number>>);
+            // Accept both legacy map shape and new array shape. Convert to
+            // internal map representation so the rest of the form remains
+            // unchanged. appliancesToArray handles both shapes and will
+            // produce human-friendly names when converting from a map.
+            const items = appliancesToArray(foundBuilding.metadata.electronics_inventory as unknown);
+            setAppliances(arrayToAppliances(items));
           }
-          
-          // Fetch all tariffs to find category_id for saved tariff_id
+
+          // Try a single-shot approach: fetch all tariffs once, find the saved tariff
+          // and then load tariffs for its category. This reduces requests and is
+          // more robust if backend filtering is inconsistent.
           try {
-            // We need to load all tariffs to find which category the saved tariff belongs to
-            // This is a workaround since backend doesn't return category_id in building response
-            const allCategories = await electricityService.getCategories(token);
-            
-            for (const cat of allCategories) {
-              const catTariffs = await electricityService.getTariffsByCategory(cat.id, token);
-              const matchedTariff = catTariffs.find(t => t.id === savedTariffId);
-              
-              if (matchedTariff) {
-                // Load tariffs first, then set category and tariff together
-                setTariffs(catTariffs);
-                setCategoryId(cat.id);
+            if (savedTariffId) {
+              const allTariffs = await electricityService.getAllTariffs(token);
+              const savedTariff = allTariffs.find((t) => t.id === savedTariffId);
+
+              if (savedTariff) {
+                // Set category from saved tariff and load tariffs for that category
+                if (savedTariff.category_id) {
+                  setCategoryId(savedTariff.category_id);
+                  try {
+                    const catTariffs = await electricityService.getTariffsByCategory(savedTariff.category_id, token);
+                    // If server returns unrelated tariffs, prefer client-side filtering
+                    const filtered = catTariffs.filter((t) => t.category_id === savedTariff.category_id);
+                    setTariffs(filtered.length ? filtered : catTariffs.length ? catTariffs : [savedTariff]);
+                  } catch (errCat) {
+                    // Fallback: just put the saved tariff as the single option
+                    console.warn('Failed to load tariffs for saved tariff category, falling back to single option', errCat);
+                    setTariffs([savedTariff]);
+                  }
+                } else {
+                  // No category info on tariff — still show it so user can re-select
+                  setTariffs([savedTariff]);
+                }
+
                 setTariffId(savedTariffId);
-                break;
+              } else {
+                // Saved tariff id not found in allTariffs — set id so user can correct
+                console.warn('Saved tariff id not found in all tariffs:', savedTariffId);
+                setTariffId(savedTariffId);
               }
             }
           } catch (err) {
-            console.error("Failed to find category for tariff:", err);
-            // Fallback: just set tariffId, user will need to select category manually
-            setTariffId(savedTariffId);
+            console.error('Failed to resolve saved tariff/category:', err);
+            if (savedTariffId) setTariffId(savedTariffId);
           }
         }
       } catch (error) {
         console.error("Failed to fetch building:", error);
       } finally {
-        setLoading(false);
+        setTimeout(() => {
+          setIsInitialLoad(false);
+          setLoading(false);
+        }, 0);
       }
     }
 
@@ -152,9 +263,9 @@ export default function EditBuildingPage() {
         console.log("⏭️ Skipping tariff reload, data already loaded");
         return;
       }
-      
+
       setLoadingTariffs(true);
-      
+
       try {
         const token = authService.getToken();
         if (!token) return;
@@ -231,9 +342,13 @@ export default function EditBuildingPage() {
     } else {
       console.log("⚠️ No province selected, clearing regencies");
       setRegencies([]);
-      setKabKota("");
+      if (!isInitialLoad) {
+        setKabKota("");
+        setKecamatan("");
+        setKelurahan("");
+      }
     }
-  }, [provinsi]);
+  }, [provinsi, isInitialLoad]);
 
   // Load districts when regency changes
   useEffect(() => {
@@ -249,6 +364,10 @@ export default function EditBuildingPage() {
       } catch (error) {
         console.error("Failed to load districts:", error);
         setDistricts([]);
+        if (!isInitialLoad) {
+          setKecamatan("");
+          setKelurahan("");
+        }
       } finally {
         setLoadingDistricts(false);
       }
@@ -259,9 +378,12 @@ export default function EditBuildingPage() {
     } else {
       console.log("⚠️ No regency selected, clearing districts");
       setDistricts([]);
-      setKecamatan("");
+      if (!isInitialLoad) {
+        setKecamatan("");
+        setKelurahan("");
+      }
     }
-  }, [kabKota]);
+  }, [kabKota, isInitialLoad]);
 
   // Load villages when district changes
   useEffect(() => {
@@ -277,6 +399,9 @@ export default function EditBuildingPage() {
       } catch (error) {
         console.error("Failed to load villages:", error);
         setVillages([]);
+        if (!isInitialLoad) {
+          setKelurahan("");
+        }
       } finally {
         setLoadingVillages(false);
       }
@@ -287,15 +412,17 @@ export default function EditBuildingPage() {
     } else {
       console.log("⚠️ No district selected, clearing villages");
       setVillages([]);
-      setKelurahan("");
+      if (!isInitialLoad) {
+        setKelurahan("");
+      }
     }
-  }, [kecamatan]);
+  }, [kecamatan, isInitialLoad]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Peralatan listrik sekarang opsional (tidak wajib)
-    
+
     setLoading(true);
 
     try {
@@ -305,9 +432,9 @@ export default function EditBuildingPage() {
       // Get user profile to get user_id (REQUIRED by backend)
       const { userService } = await import("@/services/user");
       const profile = await userService.getMe(token);
-      
+
       if (!profile.id) {
-        alert("User ID tidak tersedia");
+        toast.error("User ID tidak tersedia");
         return;
       }
 
@@ -317,7 +444,12 @@ export default function EditBuildingPage() {
         // Remove leading zeros and keep only valid UUID characters (0-9, a-f, -)
         return uuid.replace(/^0+/, '').replace(/[^0-9a-f-]/gi, '');
       };
-      
+
+      if (isNaN(Number(postalCode))) {
+        toast.error("Kode Pos harus berupa angka.");
+        return;
+      }
+
       const payload = {
         name,
         user_id: profile.id, // REQUIRED: User ID from backend
@@ -331,20 +463,21 @@ export default function EditBuildingPage() {
         full_address: alamatJalan,
         metadata: {
           area_sqm: luas ? parseFloat(luas) : undefined,
-          electronics_inventory: appliances, // Simpan appliances ke electronics_inventory
+          // Convert internal appliances map -> array of { name, qty }
+          electronics_inventory: appliancesToArray(appliances).map((it) => ({ name: it.name, qty: toSafeNumber(it.count) })),
         },
       };
-      
+
       console.log("Update building payload:", payload);
       console.log("👤 User ID:", profile.id);
 
       await assetsService.updateBuilding(id, payload, token);
-      
-      alert("Bangunan berhasil diperbarui!");
+
+      toast.error("Bangunan berhasil diperbarui!");
       router.push("/app/profile/manajemen-bangunan");
     } catch (error) {
-      console.error("Failed to update building:", error);
-      alert(error instanceof Error ? error.message : "Gagal memperbarui bangunan");
+  console.error("Failed to update building:", error);
+  toast.error(userFriendlyError(error, "Gagal memperbarui bangunan. Silakan coba lagi."));
     } finally {
       setLoading(false);
     }
@@ -404,7 +537,7 @@ export default function EditBuildingPage() {
   return (
     <main className="mx-auto max-w-screen-sm px-4 pb-28">
       <header className="mb-3 flex items-center gap-2">
-        <button onClick={() => router.back()} aria-label="Kembali" className="grid h-9 w-9 place-items-center">
+        <button onClick={() => router.push('/app/profile/manajemen-bangunan')} aria-label="Kembali" className="grid h-9 w-9 place-items-center">
           <Image src="/arrow-left.svg" alt="" width={18} height={18} />
         </button>
         <h1 className="flex-1 text-center text-lg font-semibold text-black">Edit Bangunan</h1>
@@ -413,12 +546,12 @@ export default function EditBuildingPage() {
       <div className="mx-auto mt-3 h-0.5 w-full" style={{ backgroundColor: "var(--color-primary)" }} />
 
       <form className="mt-4 space-y-4 rounded-2xl border border-emerald-500/60 p-4" onSubmit={handleSubmit}>
-        <TextField 
-          id="nama" 
-          label="Nama Bangunan" 
-          value={name} 
-          onChange={(e) => setName(e.target.value)} 
-          required 
+        <TextField
+          id="nama"
+          label="Nama Bangunan"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
         />
 
         <Select
@@ -442,13 +575,15 @@ export default function EditBuildingPage() {
             loadingTariffs
               ? "Memuat..."
               : categoryId
-              ? "Pilih daya listrik"
-              : "Pilih kategori dulu"
+                ? "Pilih daya listrik"
+                : "Pilih kategori dulu"
           }
           options={tariffOptions}
           value={tariffId}
           onChange={(e) => setTariffId(e.target.value)}
-          disabled={!categoryId || loadingTariffs}
+          // Don't lock the tariff select just because categoryId is missing
+          // If tariffs were loaded (including fallback single saved-tariff), allow user to select
+          disabled={loadingTariffs || tariffs.length === 0}
           required
         />
 
@@ -477,6 +612,8 @@ export default function EditBuildingPage() {
           options={provinceOptions}
           value={provinsi}
           onChange={(e) => {
+            console.log(e.target.value);
+
             setProvinsi(e.target.value);
             setKabKota("");
             setKecamatan("");
@@ -493,8 +630,8 @@ export default function EditBuildingPage() {
             loadingRegencies
               ? "Memuat..."
               : provinsi
-              ? "Pilih kabupaten/kota"
-              : "Pilih provinsi dulu"
+                ? "Pilih kabupaten/kota"
+                : "Pilih provinsi dulu"
           }
           options={regencyOptions}
           value={kabKota}
@@ -514,8 +651,8 @@ export default function EditBuildingPage() {
             loadingDistricts
               ? "Memuat..."
               : kabKota
-              ? "Pilih kecamatan"
-              : "Pilih kabupaten/kota dulu"
+                ? "Pilih kecamatan"
+                : "Pilih kabupaten/kota dulu"
           }
           options={districtOptions}
           value={kecamatan}
@@ -534,8 +671,8 @@ export default function EditBuildingPage() {
             loadingVillages
               ? "Memuat..."
               : kecamatan
-              ? "Pilih kelurahan/desa"
-              : "Pilih kecamatan dulu"
+                ? "Pilih kelurahan/desa"
+                : "Pilih kecamatan dulu"
           }
           options={villageOptions}
           value={kelurahan}
@@ -548,6 +685,8 @@ export default function EditBuildingPage() {
           id="postalCode"
           label="Kode Pos"
           type="text"
+          inputMode="numeric"
+          maxLength={6}
           placeholder="12345"
           value={postalCode}
           onChange={(e) => setPostalCode(e.target.value)}
@@ -595,10 +734,12 @@ export default function EditBuildingPage() {
       {/* Appliance Sheet Modal */}
       <ApplianceSheet
         open={showApplianceSheet}
-        initial={appliances}
+        // pass a normalized array so ApplianceSheet can render safely
+        initial={appliancesToArray(appliances)}
         onClose={() => setShowApplianceSheet(false)}
+        // ApplianceSheet returns array -> convert back to mapping for backend shape
         onApply={(vals) => {
-          setAppliances(vals);
+          setAppliances(arrayToAppliances(vals));
           setShowApplianceSheet(false);
         }}
       />

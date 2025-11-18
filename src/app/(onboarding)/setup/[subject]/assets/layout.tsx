@@ -9,6 +9,7 @@ import { useOnboarding } from "@/stores/onboarding";
 import useAuth from "@/hooks/useAuth";
 import { assetsService } from "@/services/assets";
 import { userService } from "@/services/user";
+import { userFriendlyError } from "@/lib/userError";
 
 export default function AssetsLayout({ children }: { children: React.ReactNode }) {
   const { subject } = useParams<{ subject: "individu" | "lembaga" }>();
@@ -84,24 +85,36 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
           throw new Error("User ID not available");
         }
 
-        // 1. Submit all assets (buildings + vehicles)
-        // Read the current snapshot from the zustand store at the moment of submit to
-        // avoid any possibility of an earlier reset/closure leaving stale values.
+    // 1. Submit all assets (buildings + vehicles)
+    // Read the current snapshot from the zustand store at the moment of submit to
+    // avoid any possibility of an earlier reset/closure leaving stale values.
   const getter = (useAssetWizard as unknown as { getState: () => { buildings: unknown[]; vehicles: unknown[] } }).getState;
-        const snapshot = getter();
+    const snapshot = getter();
+    // Debug: snapshot should contain both buildings and vehicles. If empty, log raw localStorage for diagnosis.
+    console.debug("[assets-layout] zustand snapshot at submit:", snapshot);
 
         // If the zustand snapshot is empty (possible rehydration/reset race),
         // try to recover persisted data directly from localStorage as a fallback.
   let buildingsToSubmit = snapshot.buildings;
   const vehiclesToSubmit = snapshot.vehicles;
 
+        // Fallback: if snapshot is empty but the reactive `buildings` from hook has items,
+        // prefer that. This handles rare rehydration/race cases where the getter snapshot
+        // may be empty while the hook-derived state has been populated.
+        if ((buildingsToSubmit?.length ?? 0) === 0 && buildings.length > 0) {
+          console.debug('[assets-layout] using hook-derived buildings as fallback, count:', buildings.length);
+          buildingsToSubmit = buildings as unknown as typeof buildingsToSubmit;
+        }
+
         if ((buildingsToSubmit?.length ?? 0) === 0) {
           try {
             const raw = typeof window !== "undefined" ? localStorage.getItem("asset-wizard") : null;
+            console.debug("[assets-layout] localStorage.raw asset-wizard:", raw);
             if (raw) {
               const parsed = JSON.parse(raw);
               // Zustand persist stores under `state` by default, but older shapes may store directly.
               const persisted = parsed?.state ?? parsed;
+              console.debug("[assets-layout] parsed persisted asset-wizard:", persisted);
               if (persisted && Array.isArray(persisted.buildings) && persisted.buildings.length > 0) {
                 console.debug("[assets-layout] recovered buildings from localStorage persist:", persisted.buildings);
                 buildingsToSubmit = persisted.buildings;
@@ -139,9 +152,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         router.replace(subject === "lembaga" ? "/lembaga" : "/app");
       } catch (error) {
         console.error("❌ Failed to submit assets:", error);
-        setSubmitError(
-          error instanceof Error ? error.message : "Gagal menyimpan data. Silakan coba lagi."
-        );
+        setSubmitError(userFriendlyError(error, "Gagal menyimpan data. Silakan coba lagi."));
       } finally {
         setIsSubmitting(false);
       }

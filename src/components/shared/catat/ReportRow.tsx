@@ -1,6 +1,7 @@
 // src/components/individu/catat/ReportRow.tsx
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 import Link from "next/link";
 
 type Props = {
@@ -33,9 +34,15 @@ export default function ReportRow({
   href = "#",
   className,
 }: Props) {
+  // const sub =
+  //   subtitle ??
+  //   [formatDateId(dateISO), typeof amount === "number" ? `${amount} kg CO₂e` : null]
+  //     .filter(Boolean)
+  //     .join(" • ");
+
   const sub =
     subtitle ??
-    [formatDateId(dateISO), typeof amount === "number" ? `${amount} kg CO₂e` : null]
+    [formatDateId(dateISO), typeof amount === "number" ? `${formatCarbonFootprint(amount).value} ${formatCarbonFootprint(amount).unit}` : null]
       .filter(Boolean)
       .join(" • ");
 

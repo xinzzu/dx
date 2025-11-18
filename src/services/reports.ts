@@ -96,6 +96,13 @@ export const reportsService = {
   },
 
   /**
+   * Get a single transport report by id (under /me scope)
+   */
+  async getTransportReport(id: string, token: string): Promise<TransportReportResponse> {
+    return fetchWithAuth<TransportReportResponse>(`/me/reports/transportation/${encodeURIComponent(id)}`, token);
+  },
+
+  /**
    * Update a transport report by id (if backend supports PUT)
    */
   async updateTransportReport(
@@ -103,9 +110,17 @@ export const reportsService = {
     token: string,
     payload: Partial<CreateTransportReportPayload>
   ): Promise<TransportReportResponse> {
-    return fetchWithAuth<TransportReportResponse>(`/reports/transportation/${encodeURIComponent(id)}`, token, {
+    return fetchWithAuth<TransportReportResponse>(`/me/reports/transportation/${encodeURIComponent(id)}`, token, {
       method: 'PUT',
       body: JSON.stringify(payload),
+    });
+  },
+  /**
+   * Delete a transport report by id
+   */
+  async deleteTransportReport(id: string, token: string) {
+    return fetchWithAuth<unknown>(`/me/reports/transportation/${encodeURIComponent(id)}`, token, {
+      method: 'DELETE',
     });
   },
   /**
@@ -139,7 +154,13 @@ export const reportsService = {
    * Dashboard data for given timeframe. Example timeframe: 'month'
    * Maps directly to backend /reports/dashboard/?timeframe=... endpoint.
    */
-  async getDashboard(token: string, timeframe = 'month') {
+  async getDashboard(token: string, timeframe = 'month', year?: number, month?: number) {
+    const base = `/reports/dashboard?timeframe=${encodeURIComponent(timeframe)}`;
+    const q =
+      base +
+      (typeof year === 'number' ? `&year=${encodeURIComponent(String(year))}` : '') +
+      (typeof month === 'number' ? `&month=${encodeURIComponent(String(month))}` : '');
+
     return fetchWithAuth<{
       timeframe: string;
       trend_chart: { labels: string[]; data: number[] };
@@ -151,6 +172,6 @@ export const reportsService = {
           percentage: number;
         }>;
       };
-    }>(`/reports/dashboard?timeframe=${encodeURIComponent(timeframe)}`, token);
+    }>(q, token);
   },
 };

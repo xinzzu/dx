@@ -26,7 +26,7 @@ export const CATEGORIES_BY_USER: Record<"individu" | "lembaga", CategoryConfig[]
       id: "makanan",
       title: "Konsumsi Makanan",
       subtitle: "Makanan yang Anda konsumsi",
-      iconSrc: "/images/catat/plastic.png",
+      iconSrc: "/images/catat/food.png",
       href: (base = "/app/catat") => `${base}/konsumsi-makanan`,
     },
   ],

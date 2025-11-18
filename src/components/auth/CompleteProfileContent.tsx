@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Button from "@/components/ui/Button";
 import TextField from "@/components/ui/TextField";
@@ -66,34 +66,6 @@ export default function CompleteProfileContent({ onSaved }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getIdToken, currentUser: currentFirebaseUser } = useAuth();
-
-  // helper: ensure we always use backend access token (exchange if needed)
-  const resolveBackendToken = useCallback(async (): Promise<string | null> => {
-    // prefer saved backend token
-    const token = authService.getToken() ?? null;
-    if (token) return token;
-
-    // fallback: try to exchange firebase id token
-    const firebaseIdToken = await getIdToken();
-    if (!firebaseIdToken || !currentFirebaseUser) return null;
-
-    try {
-      const backend = await authService.loginWithGoogle(firebaseIdToken);
-      authService.saveToken(backend);
-      return backend;
-    } catch (e) {
-      console.error('[auth] exchange failed in resolveBackendToken', e);
-      return null;
-    }
-  }, [getIdToken, currentFirebaseUser]);
-
-  // helper: normalize Indonesian phone numbers to E.164 (simple)
-  function normalizePhone(localPhone?: string) {
-    if (!localPhone) return localPhone || "";
-    const digits = String(localPhone).replace(/\D/g, "");
-    if (digits.startsWith("0")) return "62" + digits.slice(1);
-    return digits;
-  }
 
   const initialType = (searchParams?.get("type") as Mode) || "individu";
 
@@ -270,7 +242,7 @@ export default function CompleteProfileContent({ onSaved }: Props) {
     async function loadProvinces() {
       setLoadingProvinces(true);
       try {
-        const token = await resolveBackendToken();
+        const token = await getIdToken();
 
         if (!token) {
           console.warn("No backend token available. User must login first.");
@@ -289,17 +261,17 @@ export default function CompleteProfileContent({ onSaved }: Props) {
     if (mounted) {
       loadProvinces();
     }
-  }, [mounted, resolveBackendToken]);
+  }, [mounted, getIdToken]);
 
   // ⬇ BARU: Load regencies ketika provinsi berubah
   useEffect(() => {
     async function loadRegencies(provinceCode: string) {
       setLoadingRegencies(true);
       try {
-  const token = await resolveBackendToken();
-  if (!token) return;
+        const token = await getIdToken();
+        if (!token) return;
 
-  const data = await areaService.getRegencies(provinceCode, token);
+        const data = await areaService.getRegencies(provinceCode, token);
         setRegencies(data);
       } catch (error) {
         console.error("Failed to load regencies:", error);
@@ -315,17 +287,17 @@ export default function CompleteProfileContent({ onSaved }: Props) {
     } else {
       setRegencies([]);
     }
-  }, [individu.provinsi, lembaga.provinsi, mode, resolveBackendToken]);
+  }, [individu.provinsi, lembaga.provinsi, mode, getIdToken]);
 
   // ⬇ BARU: Load districts ketika kabupaten berubah
   useEffect(() => {
     async function loadDistricts(regencyCode: string) {
       setLoadingDistricts(true);
       try {
-  const token = await resolveBackendToken();
-  if (!token) return;
+        const token = await getIdToken();
+        if (!token) return;
 
-  const data = await areaService.getDistricts(regencyCode, token);
+        const data = await areaService.getDistricts(regencyCode, token);
         setDistricts(data);
       } catch (error) {
         console.error("Failed to load districts:", error);
@@ -341,17 +313,17 @@ export default function CompleteProfileContent({ onSaved }: Props) {
     } else {
       setDistricts([]);
     }
-  }, [individu.kabupaten, lembaga.kabupaten, mode, resolveBackendToken]);
+  }, [individu.kabupaten, lembaga.kabupaten, mode, getIdToken]);
 
   // ⬇ BARU: Load villages ketika kecamatan berubah
   useEffect(() => {
     async function loadVillages(districtCode: string) {
       setLoadingVillages(true);
       try {
-  const token = await resolveBackendToken();
-  if (!token) return;
+        const token = await getIdToken();
+        if (!token) return;
 
-  const data = await areaService.getVillages(districtCode, token);
+        const data = await areaService.getVillages(districtCode, token);
         setVillages(data);
       } catch (error) {
         console.error("Failed to load villages:", error);
@@ -367,7 +339,7 @@ export default function CompleteProfileContent({ onSaved }: Props) {
     } else {
       setVillages([]);
     }
-  }, [individu.kecamatan, lembaga.kecamatan, mode, resolveBackendToken]);
+  }, [individu.kecamatan, lembaga.kecamatan, mode, getIdToken]);
 
   function setField(
     field: keyof IndividuData | keyof LembagaData,
@@ -531,7 +503,7 @@ export default function CompleteProfileContent({ onSaved }: Props) {
     setSubmitError("");
 
     try {
-  const token = await resolveBackendToken();
+      const token = await getIdToken();
 
       if (!token) {
         setSubmitError("Token tidak ditemukan. Silakan login kembali.");
@@ -556,42 +528,36 @@ export default function CompleteProfileContent({ onSaved }: Props) {
       const payload =
         mode === "individu"
           ? {
-              phone_number: normalizePhone(individu.nomorTelepon),
-              province: individu.provinsi,
-              city: individu.kabupaten,
-              district: individu.kecamatan,
-              sub_district: individu.kelurahan,
-              postal_code: individu.kodePos,
-              user_type: mode as "individu" | "lembaga",
-              address: individu.address,
-              is_profile_complete: true,
-              active: true,
-              individual_profile: {
-                full_name: individu.namaLengkap,
-                gender: (individu.jenisKelamin === "laki-laki" ? "male" : "female") as
-                  | "male"
-                  | "female",
-                active: true,
-              },
-              email: individu.email || undefined,
-            }
+            phone_number: individu.nomorTelepon,
+            province: individu.provinsi,
+            city: individu.kabupaten,
+            district: individu.kecamatan,
+            sub_district: individu.kelurahan,
+            postal_code: individu.kodePos,
+            user_type: mode as "individu" | "lembaga",
+            address: individu.address,
+            individual_profile: {
+              full_name: individu.namaLengkap,
+              gender: (individu.jenisKelamin === "laki-laki" ? "male" : "female") as
+                | "male"
+                | "female",
+            },
+            email: individu.email || undefined,
+          }
           : {
-              phone_number: normalizePhone(lembaga.nomorTelepon),
-              province: lembaga.provinsi,
-              city: lembaga.kabupaten,
-              district: lembaga.kecamatan,
-              sub_district: lembaga.kelurahan,
-              postal_code: lembaga.kodePos,
-              user_type: mode as "individu" | "lembaga",
-              address: lembaga.address,
-              is_profile_complete: true,
-              active: true,
-              institution_profile: {
-                name: lembaga.namaLembaga,
-                active: true,
-              },
-              email: lembaga.email || undefined,
-            };
+            phone_number: lembaga.nomorTelepon,
+            province: lembaga.provinsi,
+            city: lembaga.kabupaten,
+            district: lembaga.kecamatan,
+            sub_district: lembaga.kelurahan,
+            postal_code: lembaga.kodePos,
+            user_type: mode as "individu" | "lembaga",
+            address: lembaga.address,
+            institution_profile: {
+              name: lembaga.namaLembaga,
+            },
+            email: lembaga.email || undefined,
+          };
 
       // Debug: mask token so we can confirm a token is present without leaking it
       try {
@@ -653,7 +619,6 @@ export default function CompleteProfileContent({ onSaved }: Props) {
       setIsLoading(false);
     }
   }
-
 
   if (!mounted || loadingUser) {
     // skeleton
@@ -871,7 +836,7 @@ export default function CompleteProfileContent({ onSaved }: Props) {
                     setField("kodePos", value);
                   }}
                   error={errorsInd.kodePos}
-                  maxLength={5}
+                  maxLength={6}
                   required
                 />
               </>

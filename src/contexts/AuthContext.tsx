@@ -92,9 +92,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
           } = useOnboarding.getState();
           
           // Sync activation status
-          if (profile.active) {
-            markActivated();
-          }
+          
           
           if (profile.is_profile_complete) {
             markProfileCompleted();
@@ -131,16 +129,14 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
               
               // Sync backend flags to Zustand store
               const { 
-                markActivated,
+                
                 markProfileCompleted, 
                 markAssetsCompleted,
                 markAssetsBuildingsCompleted,
                 markAssetsVehiclesCompleted 
               } = useOnboarding.getState();
               
-              if (profile.active) {
-                markActivated();
-              }
+              
               
               if (profile.is_profile_complete) {
                 markProfileCompleted();

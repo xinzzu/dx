@@ -52,11 +52,11 @@ export default function WelcomePage() {
         <p className="mt-6 text-xs text-black/60">
           Dengan masuk atau mendaftar, kamu menyetujui
           {" "}
-          <a href="/terms" className="font-semibold text-[#22C55E]">Syarat & Ketentuan</a>
+          <a href="/syarat-ketentuan" className="font-semibold text-[#22C55E]">Syarat & Ketentuan</a>
           {" "}
           dan
           {" "}
-          <a href="/privacy" className="font-semibold text-[#22C55E]">Kebijakan Privasi</a>.
+          <a href="/pusat-bantuan" className="font-semibold text-[#22C55E]">Kebijakan Privasi</a>.
         </p>
       </section>
     </main>

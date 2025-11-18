@@ -3,7 +3,7 @@
 import Image from "next/image";
 import type { MonthReport } from "./types";
 import { CategoryItem } from "./CategoryItem";
-import { getChangeIcon, getChangeTextColor } from "@/utils/carbonAnalysis";
+import { formatCarbonFootprint, getChangeIcon, getChangeTextColor } from "@/utils/carbonAnalysis";
 
 type Props = { report: MonthReport };
 
@@ -30,9 +30,8 @@ export default function ReportHistoryCard({ report }: Props) {
         </div>
         {/* Progress indicator: show up/down based on comparisonStatus using shared helpers */}
         <div
-          className={`mt-0.5 flex items-center gap-1 rounded-xl px-2 py-1 ${
-            report.comparisonStatus === "increase" ? "bg-red-50" : "bg-emerald-50"
-          }`}
+          className={`mt-0.5 flex items-center gap-1 rounded-xl px-2 py-1 ${report.comparisonStatus === "increase" ? "bg-red-50" : "bg-emerald-50"
+            }`}
         >
           {/* icon */}
           {getChangeIcon(report.comparisonStatus as "increase" | "decrease" | "same" | null)}
@@ -46,15 +45,17 @@ export default function ReportHistoryCard({ report }: Props) {
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
           <div className="text-sm text-black/60">Total Emisi</div>
           <div className="mt-1 text-xl font-semibold text-emerald-600">
-            {Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(totalEmisiKg)}
-            <span className="ml-1 text-sm font-normal text-black/60">kg CO₂e</span>
+            {/* {Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(totalEmisiKg)} */}
+            {formatCarbonFootprint(totalEmisiKg).value}
+            <span className="ml-1 text-sm font-normal text-black/60">{formatCarbonFootprint(totalEmisiKg).unit}</span>
           </div>
         </div>
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
           <div className="text-sm text-black/60">Pengurangan</div>
           <div className="mt-1 text-xl font-semibold text-emerald-600">
-            {Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(penguranganKg)}
-            <span className="ml-1 text-sm font-normal text-black/60">kg CO₂e</span>
+            {/* {Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(penguranganKg)} */}
+            {formatCarbonFootprint(penguranganKg).value}
+            <span className="ml-1 text-sm font-normal text-black/60">{formatCarbonFootprint(penguranganKg).unit}</span>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import ScrollContainer from "@/components/nav/ScrollContainer";
@@ -8,6 +9,10 @@ import Button from "@/components/ui/Button";
 import { formatDateID, nf } from "@/lib/format";
 import useAuth from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/api/client";
+import { toast } from "sonner";
+import ConfirmDeleteModal from "@/components/ui/ConfirmDeleteModal";
+import { deleteFoodReport } from "@/services/food";
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 
 // ===== Types =====
 type FoodDetail = {
@@ -40,8 +45,10 @@ function EmissionBadge({ value }: { value: number }) {
         <span className="font-medium text-[#04BF68]">Total Emisi</span>
       </div>
       <div className="text-right font-semibold text-[#04BF68]">
-        {nf(value)}{" "}
-        <span className="text-xs font-normal text-[#04BF68]">kg CO₂e</span>
+        {/* {nf(value)}{" "}
+        <span className="text-xs font-normal text-[#04BF68]">kg CO₂e</span> */}
+        {formatCarbonFootprint(value ?? 0).value}{" "}
+        <span className="text-xs font-normal text-[#04BF68]">{formatCarbonFootprint(value ?? 0).unit}</span>
       </div>
     </div>
   );
@@ -51,9 +58,8 @@ function Chevron({ open }: { open: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      className={`h-4 w-4 transition-transform ${
-        open ? "rotate-180" : "rotate-0"
-      }`}
+      className={`h-4 w-4 transition-transform ${open ? "rotate-180" : "rotate-0"
+        }`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -69,8 +75,8 @@ function FoodCard({
   onDelete,
 }: {
   data: FoodReportItem;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
+  onEdit?: (reportDate: string, reportType: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -130,13 +136,14 @@ function FoodCard({
       <div className="my-3 h-px w-full bg-gray-200" />
 
       {/* Actions */}
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="!bg-emerald-50 !border-emerald-200 !text-emerald-700"
-          onClick={() => onEdit(data.id)}
-        >
+          <div className="grid grid-cols-2 gap-3">
+            {onEdit ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="bg-emerald-50! border-emerald-200! text-emerald-700!"
+                onClick={() => onEdit(data.report_date, data.period)}
+              >
           <svg
             viewBox="0 0 24 24"
             className="mr-2 h-4 w-4"
@@ -148,12 +155,16 @@ function FoodCard({
           </svg>
           Edit
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="!bg-red-50 !border-red-200 !text-red-600"
-          onClick={() => onDelete(data.id)}
-        >
+            ) : (
+              <div />
+            )}
+            {onDelete ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="bg-red-50! border-red-200! text-red-600!"
+                onClick={() => onDelete(data.id)}
+              >
           <svg
             viewBox="0 0 24 24"
             className="mr-2 h-4 w-4"
@@ -165,16 +176,24 @@ function FoodCard({
           </svg>
           Hapus
         </Button>
+            ) : (
+              <div />
+            )}
       </div>
     </article>
   );
 }
-
-// ===== Page (dummy) =====
 export default function FoodReportListPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from") || null;
   const [items, setItems] = useState<FoodReportItem[] | null>(null);
   const { getIdToken } = useAuth();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [disableActions, setDisableActions] = useState(false);
+  const [noPrefillData, setNoPrefillData] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -182,25 +201,59 @@ export default function FoodReportListPage() {
     async function loadReports() {
       setItems(null);
       try {
-        const firebaseToken = await getIdToken();
-        if (!firebaseToken) {
-          // no token — leave items empty
-          if (mounted) setItems([]);
-          return;
+        // Prefer backend access token; exchange firebase token when needed
+        const { authService } = await import("@/services/auth");
+        let token = authService.getToken();
+        if (!token) {
+          const firebaseToken = await getIdToken();
+          if (!firebaseToken) {
+            if (mounted) setItems([]);
+            return;
+          }
+          token = await authService.loginWithGoogle(firebaseToken);
+          try { authService.saveToken(token); } catch { }
         }
 
-        const res = await fetchWithAuth(`/me/reports/food`, firebaseToken);
-        // fetchWithAuth returns the `data` payload already (or throws)
-        const reports = Array.isArray(res) ? (res as unknown[]) : (res || []) as unknown[];
+        const prefillMonth = searchParams.get("prefillMonth");
+        const prefillReportId = searchParams.get("prefillReportId") || null;
 
-        const mapped: FoodReportItem[] = reports.map((r, ri) => {
+        let reportsRaw: unknown[] = [];
+
+        if (prefillMonth) {
+          const nowIso = new Date().toISOString().slice(0, 7);
+          setDisableActions(prefillMonth !== nowIso);
+
+          const [y, m] = prefillMonth.split("-");
+          const year = Number(y || 0);
+          const month = Number(m || 0);
+
+          const byMonthRes = await fetchWithAuth(`/me/reports/food/by-month?year=${year}&month=${month}`, token);
+          if (Array.isArray(byMonthRes)) reportsRaw = byMonthRes as unknown[];
+          else if (byMonthRes && typeof byMonthRes === "object" && Array.isArray((byMonthRes as Record<string, unknown>).data)) reportsRaw = (byMonthRes as Record<string, unknown>).data as unknown[];
+          else reportsRaw = [];
+
+          if (reportsRaw.length === 0 && prefillReportId) {
+            try {
+              const single = await fetchWithAuth(`/me/reports/food/${encodeURIComponent(prefillReportId)}`, token);
+              if (single) reportsRaw = [single as unknown];
+            } catch { }
+          }
+        } else {
+          const res = await fetchWithAuth(`/me/reports/food`, token);
+          if (Array.isArray(res)) reportsRaw = res as unknown[];
+          else if (res && typeof res === "object" && Array.isArray((res as Record<string, unknown>).data)) reportsRaw = (res as Record<string, unknown>).data as unknown[];
+          else reportsRaw = [];
+        }
+
+        const mapped: FoodReportItem[] = reportsRaw.map((r, ri) => {
           const rec = (r ?? {}) as Record<string, unknown>;
-          const reportId = typeof rec.report_id === "string" ? rec.report_id : `food-${ri}`;
-          const reportDate = typeof rec.report_date === "string" ? rec.report_date : new Date().toISOString();
+
+          const reportDate = typeof rec.report_date === "string" ? rec.report_date : new Date().toISOString().split('T')[0];
           const reportType = typeof rec.report_type === "string" ? rec.report_type : "monthly";
+          const reportId = typeof rec.report_id === "string" ? rec.report_id : reportDate;
           const total = typeof rec.total_co2e === "number" ? rec.total_co2e : Number((rec.total_co2e as unknown) ?? 0) || 0;
 
-          const detailsRaw = Array.isArray(rec.food_details) ? (rec.food_details as unknown[]) : [];
+          const detailsRaw = Array.isArray(rec.items) ? (rec.items as unknown[]) : [];
           const details: FoodDetail[] = detailsRaw.map((fd, idx) => {
             const d = (fd ?? {}) as Record<string, unknown>;
             const name = typeof d.food === "string" ? d.food : "";
@@ -224,7 +277,11 @@ export default function FoodReportListPage() {
           };
         });
 
-        if (mounted) setItems(mapped);
+        if (mounted) {
+          setItems(mapped);
+          if (prefillMonth && mapped.length === 0) setNoPrefillData(true);
+          else setNoPrefillData(false);
+        }
       } catch (err) {
         console.error("Failed to load food reports", err);
         if (mounted) setItems([]);
@@ -236,18 +293,71 @@ export default function FoodReportListPage() {
     return () => {
       mounted = false;
     };
-  }, [getIdToken]);
+  }, [getIdToken, searchParams]);
 
   const data = useMemo(() => items ?? [], [items]);
 
-  const handleEdit = (id: string) => {
-    router.push(`/app/catat/konsumsi-makanan?report_id=${id}`);
+  // accept optional second arg but only send report_date in URL
+  const handleEdit = (reportDate: string, _reportType?: string) => {
+    const params = new URLSearchParams({ report_date: reportDate });
+    router.push(`/app/catat/laporan/konsumsi-makanan/edit?${params.toString()}`);
   };
 
   const handleDelete = (id: string) => {
-    if (confirm("Hapus laporan ini?")) {
-      setItems((prev) => (prev ?? []).filter((x) => x.id !== id));
+    // open confirm modal
+    setDeleteError(null);
+    setDeletingId(id);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingId) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      // Prefer backend token from authService; fall back to exchanging Firebase id token
+      const { authService } = await import("@/services/auth");
+      let token = authService.getToken();
+      if (!token) {
+        const firebaseToken = await getIdToken();
+        if (!firebaseToken) throw new Error("Autentikasi hilang");
+        token = await authService.loginWithGoogle(firebaseToken);
+        try { authService.saveToken(token); } catch { }
+      }
+
+      // If deletingId looks like a date (YYYY-MM-DD), call the by-date delete endpoint
+      const dateLike = /^\d{4}-\d{2}-\d{2}$/.test(deletingId);
+      if (dateLike) {
+        // DELETE /me/reports/food/by-date/{date}
+        await fetchWithAuth(`/me/reports/food/by-date/${encodeURIComponent(deletingId)}`, token, { method: "DELETE" });
+      } else {
+        await deleteFoodReport(deletingId, token);
+      }
+
+      // determine a friendly label for toast
+      const prevItems = items ?? [];
+      const found = prevItems.find((x) => x.id === deletingId);
+      const label = found
+        ? `${formatDateID(found.report_date)}${found.details?.[0]?.name ? ` — ${found.details[0].name}` : ""}`
+        : deletingId;
+
+      // remove from local list
+      setItems((prev) => (prev ?? []).filter((x) => x.id !== deletingId));
+      setDeletingId(null);
+
+      // show success toast
+      try {
+        toast.success(`Laporan ${label} berhasil dihapus`);
+      } catch { }
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeleteLoading(false);
     }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteError(null);
+    setDeletingId(null);
   };
 
   return (
@@ -255,7 +365,14 @@ export default function FoodReportListPage() {
       headerTitle="Laporan Konsumsi Makanan"
       leftContainer={
         <button
-          onClick={() => router.back()}
+          onClick={() => {
+            try {
+              if (from === "riwayat") router.push("/app/catat/riwayat");
+              else router.push("/app/catat/");
+            } catch {
+              router.push("/app/catat/");
+            }
+          }}
           aria-label="Kembali"
           className="grid h-9 w-9 place-items-center"
         >
@@ -264,22 +381,56 @@ export default function FoodReportListPage() {
       }
     >
       <div className="px-4 pb-24">
+        {deleteError ? (
+          <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-3 text-red-700">
+            {deleteError}
+          </div>
+        ) : null}
         <div className="space-y-4">
-          {data.map((it) => (
-            <FoodCard
-              key={it.id}
-              data={it}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
-          ))}
-
           {items === null && <p>Memuat…</p>}
-          {items?.length === 0 && (
+
+          {noPrefillData ? (
             <p className="text-sm text-gray-600">Belum ada laporan.</p>
+          ) : (
+            <>
+              {data.map((it) => (
+                <FoodCard
+                  key={it.id}
+                  data={it}
+                  onEdit={disableActions ? undefined : handleEdit}
+                  onDelete={disableActions ? undefined : handleDelete}
+                />
+              ))}
+
+              {items?.length === 0 && (
+                <p className="text-sm text-gray-600">Belum ada laporan.</p>
+              )}
+            </>
           )}
         </div>
       </div>
+      <ConfirmDeleteModal
+        open={Boolean(deletingId)}
+        title="Hapus Laporan"
+        message="Yakin ingin menghapus laporan ini? Tindakan ini tidak dapat dibatalkan."
+        dangerLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteLoading}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        meta={
+          deletingId
+            ? [
+              {
+                label: "Tanggal",
+                value:
+                  (items ?? []).find((x) => x.id === deletingId)
+                    ?.report_date ?? deletingId,
+              },
+            ]
+            : []
+        }
+      />
     </ScrollContainer>
   );
 }

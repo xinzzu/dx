@@ -10,12 +10,12 @@ import { fetchWithAuth } from '@/lib/api/client';
 export interface IndividualProfile {
   full_name: string;
   gender: 'male' | 'female';
-  active: boolean;
+
 }
 
 export interface InstitutionProfile {
   name: string;
-  active: boolean;
+ 
   institution_type?: string;
 }
 
@@ -31,7 +31,7 @@ export interface UserProfile {
   is_profile_complete: boolean;
   is_asset_buildings_completed: boolean;
   is_asset_vehicles_completed: boolean;
-  active: boolean;
+  
   // Nested profiles based on user_type
   individual_profile?: IndividualProfile;
   institution_profile?: InstitutionProfile;
@@ -48,7 +48,7 @@ export interface UpdateProfilePayload {
   sub_district?: string;
   postal_code?: string;
   address?: string;
-  active?: boolean;
+  
   is_profile_complete?: boolean;
   is_asset_buildings_completed?: boolean;
   is_asset_vehicles_completed?: boolean;
@@ -60,11 +60,10 @@ export interface UpdateProfilePayload {
   individual_profile?: {
     full_name?: string;
     gender?: 'male' | 'female';
-    active?: boolean;
+    
   };
   institution_profile?: {
     name?: string;
-    active?: boolean;
   };
 }
 

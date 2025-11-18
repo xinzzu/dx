@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 import {
   Bar,
   BarChart,
@@ -24,13 +25,14 @@ export default function TrendBarLembaga({ data }: { data: MonthPoint[] }) {
           <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} width={28} />
           <Tooltip
             cursor={{ fill: "rgba(0,0,0,0.04)" }}
-            formatter={(v: number) => [`${v} kg CO₂e`, "Emisi"]}
+            // formatter={(v: number) => [`${v} kg CO₂e`, "Emisi"]}
+            formatter={(v: number) => [`${formatCarbonFootprint(v).value} ${formatCarbonFootprint(v).unit}`, "Emisi"]}
           />
           <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#8B7CFF">
             <LabelList
               dataKey="value"
               position="top"
-              formatter={(v: unknown) => (v as number).toString()} 
+              formatter={(v: unknown) => (v as number).toString()}
               style={{ fontSize: 12, fill: "#666" }}
             />
           </Bar>

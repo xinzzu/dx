@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import { Category, CategoryBadge } from './CategoryBadge';
+import { formatCarbonFootprint } from '@/utils/carbonAnalysis';
 
 interface Field {
   label: string;
@@ -61,7 +62,7 @@ export function EmissionCard({ category, date, titleLeft, titleRight, fields, re
 
       <div className="mt-3 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-700">Emisi:</span>
-        <span className="text-sm font-semibold text-red-600">{emissionKg.toFixed(1)} kg CO₂e</span>
+        <span className="text-sm font-semibold text-red-600">{formatCarbonFootprint(emissionKg).value} {formatCarbonFootprint(emissionKg).unit}</span>
       </div>
     </div>
   );

@@ -16,8 +16,10 @@ import { reportsService } from "@/services/reports";
 import type { CreateTransportReportPayload } from "@/services/reports";
 import ReportSavedModal from "@/components/ui/ReportSavedModal";
 import { fetchWithAuth } from "@/lib/api/client";
+import { userFriendlyError } from '@/lib/userError'
 import { formatIDR } from "@/utils/currency";
 import ScrollContainer from "@/components/nav/ScrollContainer";
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 
 type TransportReportResponseMinimal = {
   total_co2e?: number;
@@ -26,6 +28,7 @@ type TransportReportResponseMinimal = {
 export default function CatatTransportasiIndividuPage() {
   const { addTransport } = useUsage();
   const [vehicles, setVehicles] = useState<VehicleResponse[]>([]);
+  const [loadVehiclesError, setLoadVehiclesError] = useState<string | null>(null);
   const router = useRouter();
 
   const [date, setDate] = useState<string>("");
@@ -34,6 +37,7 @@ export default function CatatTransportasiIndividuPage() {
   const [fuelProductOptions, setFuelProductOptions] = useState<
     Array<{ value: string; label: string }>
   >([]);
+  const [loadProductsError, setLoadProductsError] = useState<string | null>(null);
   const [selectedFuelProductId, setSelectedFuelProductId] = useState<
     string | null
   >(null);
@@ -46,7 +50,7 @@ export default function CatatTransportasiIndividuPage() {
 
   // modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [savedTotal, setSavedTotal] = useState<number | null>(null);
+  const [savedTotal, setSavedTotal] = useState<number>(0);
 
   const vehicleOptions = useMemo(
     () => vehicles.map((v) => ({ value: v.id, label: v.name })),
@@ -67,6 +71,7 @@ export default function CatatTransportasiIndividuPage() {
           authService.saveToken(token);
         }
         if (!token) return;
+        setLoadVehiclesError(null);
         const res = await assetsService.getVehicles(token);
         // prefer active vehicles only for transport selection
         const active = (res || []).filter((v) => v.active !== false);
@@ -76,6 +81,8 @@ export default function CatatTransportasiIndividuPage() {
           "Failed to load vehicles from backend, falling back to local store",
           err
         );
+        // Friendly UI message
+        setLoadVehiclesError(userFriendlyError(err, 'Gagal memuat daftar kendaraan. Silakan coba lagi.'));
         // If backend fails, we keep vehicles empty (or could fallback to assetWizard store)
         setVehicles([]);
       }
@@ -102,6 +109,7 @@ export default function CatatTransportasiIndividuPage() {
       // load products filtered by fuel type
       setLoadingProducts(true);
       try {
+        setLoadProductsError(null);
         // ensure we have backend token
         const { authService } = await import("@/services/auth");
         let token = authService.getToken();
@@ -147,6 +155,7 @@ export default function CatatTransportasiIndividuPage() {
         setSelectedFuelProductId(preSelected);
       } catch (err) {
         console.error("Failed to load products for vehicle", err);
+        setLoadProductsError(userFriendlyError(err, 'Gagal memuat daftar produk bahan bakar. Silakan coba lagi.'));
         setFuelProductOptions([]);
         setSelectedFuelProductId(null);
       } finally {
@@ -227,8 +236,8 @@ export default function CatatTransportasiIndividuPage() {
         const vehicle = vehicles.find((v) => v.id === vehicleId);
         const metadataProd = vehicle?.metadata
           ? ((vehicle.metadata as Record<string, unknown>)[
-              "fuel_product_id"
-            ] as string | undefined)
+            "fuel_product_id"
+          ] as string | undefined)
           : undefined;
         finalFuelProductId = selectedFuelProductId || metadataProd;
 
@@ -252,8 +261,7 @@ export default function CatatTransportasiIndividuPage() {
             >
           )?.["fuel_product_id"];
         throw new Error(
-          `Produk bahan bakar dengan id ${
-            id || "<tidak ada>"
+          `Produk bahan bakar dengan id ${id || "<tidak ada>"
           } tidak ditemukan atau tidak tersedia untuk akun ini.`
         );
       }
@@ -280,7 +288,7 @@ export default function CatatTransportasiIndividuPage() {
         )) as unknown as TransportReportResponseMinimal;
 
         // tampilkan modal sukses + total co2e
-        setSavedTotal(resp?.total_co2e ?? null);
+        setSavedTotal(resp?.total_co2e ?? 0);
         setModalOpen(true);
       } else {
         console.warn("No auth token available, skipping backend submit");
@@ -296,7 +304,7 @@ export default function CatatTransportasiIndividuPage() {
       // Friendly handling for server-side "fuel price not found" errors
       const msgLower = (e.message || "").toLowerCase();
       const detailsLower = (e.details || "").toLowerCase();
-      let friendly = e.message || "Gagal menyimpan laporan. Silakan coba lagi.";
+      let friendly = userFriendlyError(e, 'Gagal menyimpan laporan. Silakan coba lagi.');
 
       if (msgLower.includes("fuel price") || msgLower.includes("harga bahan bakar") || detailsLower.includes("fuel price") || detailsLower.includes("harga bahan bakar")) {
         friendly = "Harga bahan bakar untuk produk yang dipilih tidak ditemukan. Silakan minta admin menambahkan harga bahan bakar untuk produk ini, atau pilih produk/tanggal lain.";
@@ -304,7 +312,7 @@ export default function CatatTransportasiIndividuPage() {
 
       const detailStr = e.details ? ` — ${e.details}` : "";
       setSubmitError(friendly + detailStr);
-      } finally {
+    } finally {
       // always persist locally for offline friendliness
       addTransport({
         date,
@@ -424,6 +432,12 @@ export default function CatatTransportasiIndividuPage() {
           required
         />
 
+        {loadVehiclesError && (
+          <div className="rounded-xl bg-red-50 border border-red-200 p-4 mt-2">
+            <p className="text-sm text-red-600">{loadVehiclesError}</p>
+          </div>
+        )}
+
         {/* Produk bahan bakar yang dibeli */}
         <Select
           id="bbm_product"
@@ -436,11 +450,17 @@ export default function CatatTransportasiIndividuPage() {
             loadingProducts
               ? "Memuat..."
               : fuelProductOptions.length
-              ? "Pilih produk"
-              : "Belum ada produk"
+                ? "Pilih produk"
+                : "Belum ada produk"
           }
           required
         />
+
+        {loadProductsError && (
+          <div className="rounded-xl bg-red-50 border border-red-200 p-4 mt-2">
+            <p className="text-sm text-red-600">{loadProductsError}</p>
+          </div>
+        )}
 
         <TextField
           id="biaya"
@@ -477,8 +497,10 @@ export default function CatatTransportasiIndividuPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         reportKind="Transportasi"
-        total={savedTotal}
-        unit="kg CO₂e"
+        // total={savedTotal}
+        // unit="kg CO₂e"
+        total={formatCarbonFootprint(savedTotal).value}
+        unit={formatCarbonFootprint(savedTotal).unit}
         redirectTo="/app/catat"
       />
     </ScrollContainer>

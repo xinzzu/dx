@@ -1,9 +1,8 @@
 import { DetailEmissionContent } from '@/components/admin/pages/emissions/detailemission/DetailEmissionContent';
 
-type Params = { id: string };
-type Props = { params: Promise<Params> };
+type Params = Promise<{ id: string }>;
 
-export default async function EmissionDetailPage({ params }: Props) {
+export default async function EmissionDetailPage({ params }: { params: Params }) {
   const { id } = await params;
   return <DetailEmissionContent id={id} />;
 }

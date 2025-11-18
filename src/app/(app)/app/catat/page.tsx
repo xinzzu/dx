@@ -12,6 +12,7 @@ import EmptySavedBox from "@/components/shared/catat/EmptySavedBox";
 import ResultCard from "@/components/shared/catat/ResultCard";
 import { useCatatContext } from "./catat-context";
 import ScrollContainer from "@/components/nav/ScrollContainer";
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 
 type SavedReport = {
   id: string; // transport|electricity|food|waste (atau unknown)
@@ -120,7 +121,7 @@ export default function CatatIndividuPage() {
             })
             .filter((r) => {
               const k = r.id as string;
-              const isCatKey = (["transport","electricity","food","waste"] as string[]).includes(k);
+              const isCatKey = (["transport", "electricity", "food", "waste"] as string[]).includes(k);
               return !isCatKey || categories.some((c) => contextIdToKey[c.id] === (k as CatKey));
             });
 
@@ -188,7 +189,7 @@ export default function CatatIndividuPage() {
                   key={r.id}
                   title={r.title}
                   amount={r.amount}
-                  subtitle={`Total Emisi : ${r.amount} kg CO₂e`}
+                  subtitle={`Total Emisi : ${formatCarbonFootprint(r.amount).value} ${formatCarbonFootprint(r.amount).unit}`}
                   href={r.href}
                 />
               ))}

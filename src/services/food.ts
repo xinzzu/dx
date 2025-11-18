@@ -32,6 +32,39 @@ export async function createFoodReport(
 	});
 }
 
+/** List food reports for the current user */
+export async function listFoodReports(token?: string | null) {
+	return fetchWithAuth<
+		Array<{
+			report_id: string;
+			report_date: string;
+			report_type: "weekly" | "monthly";
+			total_co2e: number;
+			food_details: Array<{ food: string; frequency?: number; total_co2e?: number }>;
+		}>
+	>("/me/reports/food", token);
+}
+
+/** Update an existing food report by report_id - best-effort (backend must support PUT)
+ * Payload shape mirrors createFoodReport.
+ */
+export async function updateFoodReport(
+	reportId: string,
+	payload: FoodReportRequest,
+	token?: string | null
+) {
+	return fetchWithAuth<unknown>(`/me/reports/food/${encodeURIComponent(reportId)}`, token, {
+		method: "PUT",
+		body: JSON.stringify(payload),
+	});
+	
+}
+
+export async function deleteFoodReport(reportId: string, token?: string | null) {
+	return fetchWithAuth<unknown>(`/me/reports/food/${encodeURIComponent(reportId)}`, token, {
+		method: "DELETE",
+	});
+}
 
 export const FREQUENCY_OPTIONS: Array<{ key: FrequencyKey; label: string }> = [
 { key: "1-3-weekly", label: "1–3x per minggu" },

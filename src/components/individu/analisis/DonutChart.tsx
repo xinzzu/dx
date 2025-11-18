@@ -1,6 +1,7 @@
 // src/components/analysis/DonutChart.tsx
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 type Slice = { key: string; value: number; color: string };
@@ -11,13 +12,17 @@ export default function DonutChart({ data }: { data: Slice[] }) {
   return (
     <div className="grid grid-cols-2 items-center gap-4">
       {/* 1. Beri aspek rasio pada container */}
-      <div className="relative w-full" style={{ paddingBottom: '100%' }}> 
+      <div className="relative w-full" style={{ paddingBottom: '100%' }}>
         <div className="absolute inset-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Tooltip
+                // formatter={(v: number, _, idx) => [
+                //   `${v} kg CO₂e`,
+                //   data[idx as number]?.key ?? "Kategori",
+                // ]}
                 formatter={(v: number, _, idx) => [
-                  `${v} kg CO₂e`,
+                  `${formatCarbonFootprint(v).value} ${formatCarbonFootprint(v).unit}`,
                   data[idx as number]?.key ?? "Kategori",
                 ]}
               />
@@ -53,7 +58,7 @@ export default function DonutChart({ data }: { data: Slice[] }) {
               <div className="flex-1 text-sm">
                 <span className="font-medium">{s.key} </span>
                 <span className="text-black/60">{pct}%</span>
-                <div className="text-xs text-black/60">{s.value} kg CO₂e</div>
+                <div className="text-xs text-black/60">{formatCarbonFootprint(s.value).value} {formatCarbonFootprint(s.value).unit}</div>
               </div>
             </li>
           );

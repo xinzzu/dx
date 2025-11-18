@@ -5,25 +5,73 @@ export type ChangeStatus = 'increase' | 'decrease' | 'same' | null;
 
 const DANGER_COLOR = 'text-red-600';
 const PRIMARY_COLOR_TEXT = 'text-[color:var(--color-primary)]';
+export interface FormattedCarbon {
+    value: string;
+    unit: string;
+    shortUnit: string;
+}
+
+export function convertKgToTons(kg: number): number {
+    return kg / 1000;
+}
+
+export function formatCarbonFootprint(kg: number): FormattedCarbon {
+
+    if (kg === null || kg === undefined || isNaN(kg)) {
+        return {
+            value: '0',
+            unit: 'kg CO₂e',
+            shortUnit: 'kg'
+        };
+    }
+
+    const numericKg = Number(kg);
+    const ABS_KG = Math.abs(numericKg);
+
+    let rawValue: number;
+    let unit: string;
+    let shortUnit: string;
+
+    if (ABS_KG >= 1000) {
+        rawValue = convertKgToTons(numericKg);
+        unit = 'ton CO₂e';
+        shortUnit = 'ton';
+    } else {
+        rawValue = numericKg;
+        unit = 'kg CO₂e';
+        shortUnit = 'kg';
+    }
+
+    const formattedValue = limitLeadingDigits(rawValue);
+
+    return {
+        value: formattedValue,
+        unit: unit,
+        shortUnit: shortUnit
+    };
+}
 
 export function limitLeadingDigits(value: number, digits: number = 4): string {
     if (!isFinite(value)) return String(value);
+
     const sign = value < 0 ? "-" : "";
     const abs = Math.abs(value);
 
     const intPart = Math.floor(abs).toString();
+
     if (intPart.length >= digits) {
         return sign + intPart.slice(0, digits);
     }
 
-    const remaining = digits - intPart.length;
-    let out = abs.toFixed(remaining);
-    out = out.replace(/\.0+$|(?<=\.[0-9]*[1-9])0+$/u, "");
+    const maxAllowedDecimals = Math.min(2, digits - intPart.length);
 
-    if (out.replace(/[^0-9]/g, "").length > digits) {
-        out = out.slice(0, digits + (out.includes('.') ? 1 : 0));
-        if (out.endsWith('.')) out = out.slice(0, -1);
+    if (maxAllowedDecimals <= 0) {
+        return sign + intPart;
     }
+
+    let out = abs.toFixed(maxAllowedDecimals);
+    out = out.replace(/\.0+$/, "");
+    out = out.replace(/(?<=\.[0-9]*[1-9])0+$/u, "");
 
     return sign + out;
 }

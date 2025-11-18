@@ -1,6 +1,7 @@
 // src/components/analysis/DonutChart.tsx
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 type Slice = { key: string; value: number; color: string; percentage?: number };
@@ -18,7 +19,8 @@ export default function DonutChartLembaga({ data, total: totalProp }: { data: Sl
             <PieChart>
               <Tooltip
                 formatter={(v: number, _, idx) => [
-                  `${v} kg CO₂e`,
+                  // `${v} kg CO₂e`,
+                  `${formatCarbonFootprint(v).value} ${formatCarbonFootprint(v).unit}`,
                   data[idx as number]?.key ?? "Kategori",
                 ]}
               />
@@ -45,7 +47,8 @@ export default function DonutChartLembaga({ data, total: totalProp }: { data: Sl
       <ul className="space-y-2">
         {data.map((s) => {
           // Prefer percentage provided by backend if present, otherwise compute
-          const pct = typeof s.percentage === "number" ? Math.round(s.percentage) : Math.round((total === 0 ? 0 : (s.value / total) * 100));
+          const pctNumber = typeof s.percentage === 'number' ? s.percentage : (total === 0 ? 0 : (s.value / total) * 100);
+          const pct = pctNumber.toFixed(1);
           return (
             <li key={s.key} className="flex items-center gap-3">
               <span
@@ -55,7 +58,7 @@ export default function DonutChartLembaga({ data, total: totalProp }: { data: Sl
               <div className="flex-1 text-sm">
                 <span className="font-medium">{s.key} </span>
                 <span className="text-black/60">{pct}%</span>
-                <div className="text-xs text-black/60">{s.value} kg CO₂e</div>
+                <div className="text-xs text-black/60">{formatCarbonFootprint(s.value).value} {formatCarbonFootprint(s.value).unit}</div>
               </div>
             </li>
           );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   WasteCategoryDef,
   WasteItemInput,
@@ -11,14 +11,36 @@ import type {
 type Props = {
   categories: WasteCategoryDef[];
   onSubmit?: (payload: WasteReportPayload) => void;
+  // optional live-change callback so parent can collect the current payload
+  onChange?: (payload: WasteReportPayload) => void;
+  // optional initial values for edit mode
+  initialDate?: string;
+  initialPeriod?: "weekly" | "monthly";
+  initialQtyMap?: Record<string, string | number>;
+  // if true, date & period controls are disabled (read-only)
+  disableDatePeriod?: boolean;
 };
 
-export default function WasteFormSection({ categories, onSubmit }: Props) {
-  const [date, setDate] = useState<string>("");
-  const [period, setPeriod] = useState<"weekly" | "monthly">("weekly");
+export default function WasteFormSection({ categories, onSubmit, onChange, initialDate, initialPeriod, initialQtyMap, disableDatePeriod }: Props) {
+  const [date, setDate] = useState<string>(initialDate ?? "");
+  const [period, setPeriod] = useState<"weekly" | "monthly">(initialPeriod ?? "weekly");
 
   // ⬇️ simpan input sebagai STRING biar bisa kosong / sedang diketik
   const [qtyMap, setQtyMap] = useState<Record<string, string>>({});
+  // initialize from optional props once (or when categories change)
+  useEffect(() => {
+    if (initialDate) setDate(initialDate);
+    if (initialPeriod) setPeriod(initialPeriod);
+    if (initialQtyMap) {
+      const normalized: Record<string, string> = {};
+      categories.forEach((c) => {
+        const v = initialQtyMap[c.id];
+        if (v !== undefined && v !== null) normalized[c.id] = String(v);
+      });
+      setQtyMap((s) => ({ ...normalized, ...s }));
+    }
+    // only initialize when these inputs change
+  }, [initialDate, initialPeriod, initialQtyMap, categories]);
 
   const hasAnyValue = useMemo(
     () => categories.some((c) => parseFloat(qtyMap[c.id] ?? "") > 0),
@@ -58,6 +80,22 @@ export default function WasteFormSection({ categories, onSubmit }: Props) {
     onSubmit?.(payload);
   };
 
+  // notify parent when payload changes
+  // build a stable payload object when relevant state changes
+  useEffect(() => {
+    if (!onChange) return;
+    const items = categories
+      .map((c) => {
+        const n = parseFloat((qtyMap[c.id] ?? "").replace(",", "."));
+        const quantity = Number.isFinite(n) ? n : 0;
+        return { category_id: c.id, quantity, unit: "kg" as WasteUnit };
+      })
+      .filter((it) => it.quantity > 0);
+
+    const payload: WasteReportPayload = { report_date: date, period, items };
+    onChange(payload);
+  }, [date, period, qtyMap, categories, onChange]);
+
   return (
     <div className="space-y-4">
       {/* Tanggal laporan */}
@@ -70,6 +108,7 @@ export default function WasteFormSection({ categories, onSubmit }: Props) {
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
+          disabled={disableDatePeriod}
           className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
         />
       </div>
@@ -81,9 +120,10 @@ export default function WasteFormSection({ categories, onSubmit }: Props) {
           <button
             type="button"
             onClick={() => setPeriod("weekly")}
-            className={`rounded-xl px-4 py-2.5 text-sm font-medium ${
+            disabled={disableDatePeriod}
+              className={`rounded-xl px-4 py-2.5 text-sm font-medium ${
               period === "weekly"
-                ? "bg-[color:var(--color-primary)] text-white"
+                ? "bg-(--color-primary) text-white"
                 : "bg-gray-200 text-black/70"
             }`}
           >
@@ -92,9 +132,10 @@ export default function WasteFormSection({ categories, onSubmit }: Props) {
           <button
             type="button"
             onClick={() => setPeriod("monthly")}
+            disabled={disableDatePeriod}
             className={`rounded-xl px-4 py-2.5 text-sm font-medium ${
               period === "monthly"
-                ? "bg-[color:var(--color-primary)] text-white"
+                ? "bg-(--color-primary) text-white"
                 : "bg-gray-200 text-black/70"
             }`}
           >
@@ -145,7 +186,7 @@ export default function WasteFormSection({ categories, onSubmit }: Props) {
         onClick={handleSubmit}
         className={`mt-4 w-full rounded-2xl px-4 py-3 text-sm font-semibold ${
           canSubmit
-            ? "bg-[color:var(--color-primary)] text-white"
+            ? "bg-(--color-primary) text-white"
             : "bg-gray-300 text-white/80"
         }`}
       >

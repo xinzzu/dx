@@ -16,7 +16,7 @@ export default function ProfileHeaderCard({
   name,
   email,
   joinedText,
-  avatarSrc = "/images/profile/avatar.png",
+  avatarSrc = "/images/User.png",
   level,
   totalPoints,
   rank,
@@ -30,8 +30,8 @@ export default function ProfileHeaderCard({
         <Image
           src={avatarSrc}
           alt={name}
-          width={56}
-          height={56}
+          width={40}
+          height={40}
           priority
         />
         <div className="flex-1">
@@ -60,7 +60,7 @@ function StatPill({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-xl bg-[color:var(--color-background-card)] py-4 text-center">
       <div className="text-xs/4 opacity-90">{label}</div>
-      <div className="text-xl font-semibold">{value}</div>
+      <div className="text-xl font-semibold">{label == "Peringkat" ? '#' : ''}{value}</div>
     </div>
   );
 }

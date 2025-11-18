@@ -31,41 +31,60 @@ export const authService = {
    * @param idToken - Firebase ID Token from Google Auth
    * @returns Backend access token
    */
+  // Map of inflight login promises by firebase idToken to avoid duplicate /auth/google calls
+  _inflightLogins: new Map<string, Promise<string>>() ,
+
   async loginWithGoogle(idToken: string): Promise<string> {
+    // If we already have a saved backend token, return it immediately (idempotent)
+    const existing = authService.getToken();
+    if (existing) {
+      return existing;
+    }
+
+    // If there's an inflight request for the same idToken, reuse it
+    const existingPromise = authService._inflightLogins.get(idToken);
+    if (existingPromise) return existingPromise;
+
     console.log("📤 Sending Firebase token to backend...");
-    
-    const payload = { firebase_token: idToken };
-    
-    // ✅ Backend endpoint: /auth/google
-    const response = await fetch(`${API_BASE_URL}/auth/google`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
 
-    const json: AuthResponse = await response.json();
+    const p = (async () => {
+      const payload = { firebase_token: idToken };
+      // ✅ Backend endpoint: /auth/google
+      const response = await fetch(`${API_BASE_URL}/auth/google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-    // Helpful debug: log status and whether access_token present (but never print the token itself)
-    try {
-      const hasToken = !!json?.data?.access_token;
-      console.debug(`[authService] /auth/google -> status=${response.status} hasAccessToken=${hasToken}`);
-    } catch {
-      /* ignore debug failure */
-    }
+      const json: AuthResponse = await response.json();
 
-    if (!response.ok || !json.meta.success) {
-      console.error("❌ Login failed:", json.meta?.message ?? json);
-      throw new Error(json.meta?.message || 'Login failed');
-    }
+      // Helpful debug: log status and whether access_token present (but never print the token itself)
+      try {
+        const hasToken = !!json?.data?.access_token;
+        console.debug(`[authService] /auth/google -> status=${response.status} hasAccessToken=${hasToken}`);
+      } catch {
+        /* ignore debug failure */
+      }
 
-    if (!json.data?.access_token) {
-      throw new Error('No access token received from backend');
-    }
+      if (!response.ok || !json.meta.success) {
+        console.error("❌ Login failed:", json.meta?.message ?? json);
+        throw new Error(json.meta?.message || 'Login failed');
+      }
 
-    console.log("✅ Login successful! Profile complete:", json.data.is_profile_complete);
-    return json.data.access_token;
+      if (!json.data?.access_token) {
+        throw new Error('No access token received from backend');
+      }
+
+      console.log("✅ Login successful! Profile complete:", json.data.is_profile_complete);
+      return json.data.access_token;
+    })();
+
+    // store inflight promise and ensure cleanup
+    authService._inflightLogins.set(idToken, p);
+    p.finally(() => authService._inflightLogins.delete(idToken));
+    return p;
   },
 
   /**
@@ -77,7 +96,6 @@ export const authService = {
       // Save token under both modern and legacy keys to improve robustness across code paths
       try {
         localStorage.setItem('access_token', token);
-        localStorage.setItem('backend_token', token);
       } catch {
         // ignore storage errors
       }

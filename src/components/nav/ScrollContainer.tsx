@@ -76,7 +76,7 @@ export default function ScrollContainer({
             </p>
             <div
               className="mx-auto mt-2 h-[2px] w-full"
-              style={{ backgroundColor: "var(--color-primary)" }}
+              style={{ backgroundColor: "var(--color-gray-200)" }}
             />
           </>
         ) : (

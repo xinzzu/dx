@@ -11,26 +11,19 @@ import {
   createFoodReport,
   type FoodType,
 } from "@/services/food";
+import { userFriendlyError } from "@/lib/userError";
 import ReportSavedModal from "@/components/ui/ReportSavedModal";
 import ScrollContainer from "@/components/nav/ScrollContainer";
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 
 // ===== Helpers & types =====
 type Period = "weekly" | "monthly";
-type Freq = "1-3" | "4-5";
+type Freq = "1-3" | "4-5" | "6-7";
 type ApiFreq = "1-3-weekly" | "3-5-weekly";
 
 const toApiFreq = (f: Freq): ApiFreq => (f === "1-3" ? "1-3-weekly" : "3-5-weekly");
 
-const todayISO = () => {
-  const d = new Date();
-  const tz = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return tz.toISOString().slice(0, 10);
-};
 
-const getErrorMessage = (err: unknown) => {
-  if (err instanceof Error) return err.message;
-  try { return JSON.stringify(err); } catch { return String(err); }
-};
 
 // Ikon fallback by name
 const ICON_BASE = "/images/lembaga/catat/konsumsi-makanan";
@@ -65,7 +58,8 @@ export default function CatatKonsumsiMakananPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Form state
-  const [date, setDate] = useState<string>(todayISO());
+  // Date is empty by default — only set when user chooses a date
+  const [date, setDate] = useState<string>("");
   const [period, setPeriod] = useState<Period>("weekly");
   const [checked, setChecked] = useState<Partial<Record<string, boolean>>>({});
   const [open, setOpen] = useState<Partial<Record<string, boolean>>>({});
@@ -75,7 +69,7 @@ export default function CatatKonsumsiMakananPage() {
 
   // Modal sukses
   const [modalOpen, setModalOpen] = useState(false);
-  const [savedTotal, setSavedTotal] = useState<number | null>(null);
+  const [savedTotal, setSavedTotal] = useState<number>(0);
 
   // Ambil token BE
   useEffect(() => {
@@ -103,7 +97,7 @@ export default function CatatKonsumsiMakananPage() {
         const rows = await listFoodTypes(token);
         if (!cancelled) setFoods(rows);
       } catch (e) {
-        if (!cancelled) setLoadError(getErrorMessage(e));
+        if (!cancelled) setLoadError(userFriendlyError(e, "Gagal memuat daftar makanan. Silakan coba lagi."));
       } finally {
         if (!cancelled) setLoadingFoods(false);
       }
@@ -166,7 +160,7 @@ export default function CatatKonsumsiMakananPage() {
       )) as unknown as FoodReportResponseMinimal;
 
       // tampilkan modal
-      setSavedTotal(typeof resp?.total_co2e === "number" ? resp.total_co2e : null);
+      setSavedTotal(typeof resp?.total_co2e === "number" ? resp.total_co2e : 0);
       setModalOpen(true);
 
       // reset pilihan (opsional)
@@ -174,7 +168,7 @@ export default function CatatKonsumsiMakananPage() {
       setOpen({});
       setFreq({});
     } catch (e) {
-      setSubmitError(getErrorMessage(e) || "Gagal menyimpan");
+      setSubmitError(userFriendlyError(e, "Gagal menyimpan laporan. Silakan coba lagi."));
     } finally {
       setSubmitting(false);
     }
@@ -205,7 +199,7 @@ export default function CatatKonsumsiMakananPage() {
         {/* Tanggal */}
         <TextField
           id="date"
-          label="Tanggal Laporan *"
+          label="Tanggal Laporan"
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
@@ -310,6 +304,7 @@ export default function CatatKonsumsiMakananPage() {
                         [
                           { value: "1-3", label: "1–3 kali seminggu" },
                           { value: "4-5", label: "4–5 kali seminggu" },
+                          { value: "6-7", label: "Setiap Hari" },
                         ] as const
                       ).map((opt) => (
                         <label
@@ -361,8 +356,8 @@ export default function CatatKonsumsiMakananPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         reportKind="Konsumsi Makanan"
-        total={savedTotal}
-        unit="kg CO₂e"
+        total={formatCarbonFootprint(savedTotal).value}
+        unit={formatCarbonFootprint(savedTotal).unit}
         redirectTo="/app/catat"
       />
     </ScrollContainer>

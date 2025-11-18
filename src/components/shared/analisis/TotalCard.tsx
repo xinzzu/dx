@@ -1,5 +1,7 @@
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
+
 export default function TotalCard({ total }: { total: number }) {
   return (
     <section
@@ -11,9 +13,10 @@ export default function TotalCard({ total }: { total: number }) {
         className="mt-2 text-5xl font-semibold"
         style={{ color: "var(--color-primary)" }}
       >
-        {(total / 1000).toLocaleString("id-ID", { maximumFractionDigits: 3 })}
+        {/* {(total / 1000).toLocaleString("id-ID", { maximumFractionDigits: 3 })} */}
+        {formatCarbonFootprint(total).value}
       </div>
-      <div className="text-sm">kg CO₂e</div>
+      <div className="text-sm">{formatCarbonFootprint(total).unit}</div>
     </section>
   );
 }

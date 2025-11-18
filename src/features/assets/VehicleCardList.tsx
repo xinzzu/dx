@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useAssetWizard } from "@/stores/assetWizard";
 import useAuth from "@/hooks/useAuth";
 import { assetsService } from "@/services/assets";
+import { toast } from "sonner";
 
 export default function VehicleCardList() {
   const { vehicles, removeVehicle } = useAssetWizard();
@@ -60,7 +61,7 @@ export default function VehicleCardList() {
                     removeVehicle(v.id);
                   } catch (err) {
                     console.error('Failed to delete vehicle:', err);
-                    window.alert('Gagal menghapus kendaraan. Coba lagi.');
+                    toast.error('Gagal menghapus kendaraan. Coba lagi.');
                   } finally {
                     setDeletingId(null);
                   }

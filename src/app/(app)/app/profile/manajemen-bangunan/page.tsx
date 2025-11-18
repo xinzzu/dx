@@ -62,13 +62,13 @@ export default function Page() {
      <ScrollContainer
                  headerTitle="Atur Bangunan"
                  leftContainer={
-                   <button
-                     onClick={() => router.back()}
+                     <button
+                     onClick={() => router.push("/app/profile")}
                      aria-label="Kembali"
                      className="h-9 w-9 grid place-items-center"
-                   >
+                     >
                      <Image src="/arrow-left.svg" alt="" width={18} height={18} />
-                   </button>
+                     </button>
                  }
                >
 

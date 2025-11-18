@@ -51,7 +51,7 @@ export default function Page() {
                 headerTitle="Atur Kendaraan"
                 leftContainer={
                   <button
-                    onClick={() => router.back()}
+                    onClick={() => router.push("/app/profile" )}
                     aria-label="Kembali"
                     className="h-9 w-9 grid place-items-center"
                   >

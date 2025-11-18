@@ -10,7 +10,7 @@ type Props = {
   subtitle?: string;
   ctaLabel: string;
   onCta: () => void;
-  variant?: "primary" | "neutral";
+  variant?: "primary" | "neutral" | "background";
   illustration?: ReactNode;
   imageSrc?: string;
   imageAlt?: string;
@@ -91,7 +91,7 @@ export default function ShortcutCard({
             {title}
           </h3>
           {subtitle ? (
-            <p className={clsx("mt-1 leading-snug", isPrimary ? "text-white/90" : "text-black/70")}>
+            <p className={clsx("mt-1 leading-snug text-sm", isPrimary ? "text-white/90" : "text-black/70")}>
               {subtitle}
             </p>
           ) : null}

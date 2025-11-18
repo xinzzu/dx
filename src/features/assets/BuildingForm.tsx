@@ -10,6 +10,7 @@ import { useOnboarding } from "@/stores/onboarding";
 import useAuth from "@/hooks/useAuth";
 import { areaService, Province, Regency, District, Village } from "@/services/area";
 import { electricityService, ElectricityCategory, ElectricityTariff } from "@/services/electricity";
+import { toast } from "sonner";
 
 type Props = { onSaved?: () => void; onCancel?: () => void };
 
@@ -49,7 +50,7 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
   const [loadingRegencies, setLoadingRegencies] = useState(false);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [loadingVillages, setLoadingVillages] = useState(false);
-  
+
   // options
   const provOptions = useMemo(
     () => provinces.map((p) => ({ value: p.Code, label: p.Name })),
@@ -279,6 +280,11 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
     const selectedTariff = tariffs.find((t) => t.id === tariffId);
     const powerVa = selectedTariff?.min_power_va || 0;
 
+    if (isNaN(Number(postalCode))) {
+      toast.error("Kode Pos harus berupa angka.");
+      return;
+    }
+
     addBuilding({
       name: name.trim(),
       categoryId: categoryId,        // store category ID
@@ -287,7 +293,7 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
       tariffLabel: selectedTariff?.power_capacity_label || "", // store for display
       dayaVa: powerVa,               // store actual power value from tariff
       luasM2: luas ? Number(luas) : undefined,
-
+      postalCode: Number(postalCode) || undefined,
       // alamat simpan ke store
       alamatJalan: alamatJalan.trim(),
       provinsi,
@@ -347,11 +353,11 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
           id="daya"
           label="Daya Bangunan (VA)"
           placeholder={
-            loadingTariffs 
-              ? "Memuat..." 
-              : categoryId 
-              ? "Pilih daya bangunan" 
-              : "Pilih golongan dulu"
+            loadingTariffs
+              ? "Memuat..."
+              : categoryId
+                ? "Pilih daya bangunan"
+                : "Pilih golongan dulu"
           }
           options={tariffOptions}
           value={tariffId}
@@ -397,8 +403,8 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
             loadingRegencies
               ? "Memuat..."
               : provinsi
-              ? "Pilih kabupaten/kota"
-              : "Pilih provinsi dulu"
+                ? "Pilih kabupaten/kota"
+                : "Pilih provinsi dulu"
           }
           options={kabOptions}
           value={kabKota}
@@ -414,8 +420,8 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
             loadingDistricts
               ? "Memuat..."
               : kabKota
-              ? "Pilih kecamatan"
-              : "Pilih kab/kota dulu"
+                ? "Pilih kecamatan"
+                : "Pilih kab/kota dulu"
           }
           options={kecOptions}
           value={kecamatan}
@@ -431,8 +437,8 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
             loadingVillages
               ? "Memuat..."
               : kecamatan
-              ? "Pilih kelurahan"
-              : "Pilih kecamatan dulu"
+                ? "Pilih kelurahan"
+                : "Pilih kecamatan dulu"
           }
           options={kelOptions}
           value={kelurahan}
@@ -445,9 +451,11 @@ export default function BuildingForm({ onSaved, onCancel }: Props) {
           id="postalCode"
           label="Kode Pos"
           placeholder="Contoh 5542"
+          type="text"
           inputMode="numeric"
+          maxLength={6}
           value={postalCode}
-          onChange={(e)=> setPostalCode(e.target.value)}
+          onChange={(e) => setPostalCode(e.target.value)}
           required
 
         />

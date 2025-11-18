@@ -1,6 +1,8 @@
 // src/components/catat/CalculationResult.tsx
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
+
 type Props = {
   total: number;
 };
@@ -14,9 +16,10 @@ export default function CalculationResult({ total }: Props) {
         style={{ borderColor: "var(--color-primary)" }}
       >
         <div className="text-5xl font-semibold text-[color:var(--color-primary)]">
-          {total}
+          {/* {total} */}
+          {formatCarbonFootprint(total).value}
         </div>
-        <div className="text-sm">kg CO₂e bulan ini</div>
+        <div className="text-sm">{formatCarbonFootprint(total).unit} bulan ini</div>
       </div>
     </>
   );

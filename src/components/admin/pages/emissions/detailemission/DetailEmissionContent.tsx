@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo, useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import { BackButton } from './BackButton';
 import { UserEmissionInfo } from './UserProfile/UserEmissionInfo';
 import { EmissionStatsGrid } from './StatsCard/EmissionStatGrid';
@@ -7,89 +9,84 @@ import { BuildingAssetSection } from './UserAsset/BuildingAssetSection';
 import { VehicleAssetSection } from './UserAsset/VehicleAssetSection';
 import { EmissionMonthlyReport } from './MonthlyReport/EmissionMonthlyReport';
 import { TrendEmisiLineChart } from './EmissionChart/LineChartEmisi';
+import { getUserDetailById, getUserStats } from '@/lib/api/userDetailEmission';
+import type { UserProfile, UserStats } from '@/types/userDetailEmissionType';
+import type { BuildingAsset } from '@/types/buildingAssetType';
+import type { VehicleAsset } from '@/types/vehicleAssetType';
 
 interface DetailEmissionContentProps {
-  id: string;
+  id?: string;
 }
 
 export function DetailEmissionContent({ id }: DetailEmissionContentProps) {
-  const userData = {
-    name: 'Ahmad Rizki',
-    id,
-    type: 'Individu',
-    date_joined: '15/09/2025',
-    total_emission: 420.85,
-    emission_avg: 315.6,
-    report_count: 8,
-    building_count: 2,
-    address: 'Jl. Melati No. 12, Cipete Utara, Kebayoran Baru, Jakarta Selatan, DKI Jakarta 12150',
-  };
+  const params = useParams<{ id: string }>();
 
-  const buildingAssets = [
-    {
-      name: 'Rumah Tinggal Ahmad',
-      electricityType: 'Rumah Tangga Non-Subsidi',
-      electricityPower: '2200 VA',
-      area: '120 m²',
-      address: 'Jl. Melati No. 12, Cipete Utara, Kebayoran Baru, Jakarta Selatan, DKI Jakarta 12150',
-      equipments: [
-        { name: 'AC 1 PK', unit: '2 unit' },
-        { name: 'Kulkas 2 Pintu', unit: '1 unit' },
-        { name: 'TV LED 42 inch', unit: '1 unit' },
-        { name: 'Mesin Cuci', unit: '1 unit' },
-        { name: 'Pompa Air', unit: '1 unit' },
-      ],
-    },
-    {
-      name: 'Rumah Tinggal Ahmad',
-      electricityType: 'Rumah Tangga Non-Subsidi',
-      electricityPower: '2200 VA',
-      area: '120 m²',
-      address: 'Jl. Melati No. 12, Cipete Utara, Kebayoran Baru, Jakarta Selatan, DKI Jakarta 12150',
-      equipments: [
-        { name: 'AC 1 PK', unit: '2 unit' },
-        { name: 'Kulkas 2 Pintu', unit: '1 unit' },
-        { name: 'TV LED 42 inch', unit: '1 unit' },
-        { name: 'Mesin Cuci', unit: '1 unit' },
-        { name: 'Pompa Air', unit: '1 unit' },
-      ],
-    },
-  ];
+  const effectiveId = useMemo(() => {
+    const candidate = (id ?? params?.id ?? '').toString().trim();
+    return candidate && candidate !== 'undefined' && candidate !== 'null' ? candidate : '';
+  }, [id, params]);
 
-  const vehicleAssets = [
-    {
-      name: 'Honda Vario 150',
-      type: 'Motor',
-      engineCapacity: '150cc',
-      fuelType: 'Bensin',
-    },
-    {
-      name: 'Toyota Avanza G',
-      type: 'Mobil',
-      engineCapacity: '<1400cc',
-      fuelType: 'Bensin',
-    },
-    {
-      name: 'Toyota Avanza G',
-      type: 'Mobil',
-      engineCapacity: '<1400cc',
-      fuelType: 'Bensin',
-    },
-  ];
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [buildingAssets, setBuildingAssets] = useState<BuildingAsset[]>([]);
+  const [vehicleAssets, setVehicleAssets] = useState<VehicleAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!effectiveId) {
+      setLoading(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        setLoading(true);
+
+        // ✅ Fetch profile + assets dan stats secara parallel
+        const [userDetail, userStats] = await Promise.all([getUserDetailById(effectiveId), getUserStats(effectiveId)]);
+
+        if (mounted) {
+          setProfile(userDetail.profile);
+          setBuildingAssets(userDetail.building_assets);
+          setVehicleAssets(userDetail.vehicle_assets);
+          setStats(userStats);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user detail:', error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [effectiveId]);
 
   return (
     <div className="bg-gray-50 min-h-screen flex flex-col gap-6">
       <BackButton />
-      <UserEmissionInfo {...userData} />
-      <EmissionStatsGrid total_emission={userData.total_emission} avg_emission={userData.emission_avg} report_count={userData.report_count} building_count={userData.building_count} />
+
+      <UserEmissionInfo profile={profile} headerTotalEmisi={stats?.header_total_emisi_tons ?? 0} loading={loading} />
+
+      <EmissionStatsGrid
+        total_emission={stats?.overview_cards.total_emisi_semua_periode_tons ?? 0}
+        avg_emission={stats?.overview_cards.avg_emisi_per_bulan_tons ?? 0}
+        report_count={stats?.overview_cards.total_laporan_emisi ?? 0}
+        building_count={stats?.overview_cards.total_bangunan ?? 0}
+        vehicle_count={stats?.overview_cards.total_kendaraan ?? 0}
+        loading={loading}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <BuildingAssetSection assets={buildingAssets} />
-        <VehicleAssetSection assets={vehicleAssets} />
+        <BuildingAssetSection assets={buildingAssets} loading={loading} />
+        <VehicleAssetSection assets={vehicleAssets} loading={loading} />
       </div>
 
-      {/* Laporan Emisi per Bulan */}
-      <EmissionMonthlyReport />
-      <TrendEmisiLineChart />
+      <EmissionMonthlyReport userId={effectiveId} />
+      <TrendEmisiLineChart userId={effectiveId} />
     </div>
   );
 }

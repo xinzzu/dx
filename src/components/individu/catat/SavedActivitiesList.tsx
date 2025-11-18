@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 import Image from "next/image";
 
 export type SavedItem = {
@@ -34,8 +35,12 @@ export default function SavedActivitiesList({ items }: { items: SavedItem[] }) {
           </div>
 
           <div className="text-right text-[13px] font-semibold">
-            {it.value}
-            <div className="text-[11px] font-normal text-black/60">{it.unit ?? "kg CO₂e"}</div>
+            {/* {it.value} */}
+            {formatCarbonFootprint(it.value).value}
+            <div className="text-[11px] font-normal text-black/60">
+              {/* {it.unit ?? "kg CO₂e"} */}
+              {formatCarbonFootprint(it.value).unit}
+            </div>
           </div>
         </li>
       ))}

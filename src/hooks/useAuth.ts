@@ -39,8 +39,15 @@ async function processLoginSuccess(cred: UserCredential, backendAccessToken?: st
     throw new Error("Firebase ID Token not available after successful login.");
   }
 
-  const finalBackendAccessToken = await authService.loginWithGoogle(token);
-  authService.saveToken(finalBackendAccessToken);
+  let finalBackendAccessToken: string | undefined;
+  try {
+    finalBackendAccessToken = await authService.loginWithGoogle(token);
+    authService.saveToken(finalBackendAccessToken);
+  } catch (err) {
+    // If exchange to backend fails (e.g. race creating user), log and abort onboarding sync
+    console.warn("Failed to exchange Firebase token to backend during login:", err);
+    throw err; // rethrow so caller can handle login failure normally
+  }
 
   useOnboarding.getState().resetOnboarding();
   useAssetWizard.getState().reset();
@@ -151,29 +158,34 @@ export default function useAuth(): UseAuthReturn {
 
   const logout = useCallback(async () => {
     setLoading(true);
+
     try {
+      await signOut(auth);
+    } catch {
+      /* ignore sign out failures */
+    }
+    authService.removeToken();
+
+    useOnboarding.getState().resetOnboarding();
+    useAssetWizard.getState().reset();
+    try {
+      const state = (useUsage as unknown as { getState: () => { reset?: () => void } }).getState();
+      state.reset?.();
+    } catch {
+      /* ignore missing reset */
+    }
+
+    if (typeof window !== "undefined") {
       try {
-        await signOut(auth);
-      } catch {
-        /* ignore */
-      }
-      authService.removeToken();
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch { /* ignore */ }
+    }
 
-      useOnboarding.getState().resetOnboarding();
-      useAssetWizard.getState().reset();
-      try {
-        const state = (useUsage as unknown as { getState: () => { reset?: () => void } }).getState();
-        state.reset?.();
-      } catch {
-        /* ignore missing reset */
-      }
+    setLoading(false);
 
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.clear();
-          sessionStorage.clear();
-        } catch { /* ignore */ }
-
+    if (typeof window !== "undefined") {
+      (async () => {
         try {
           if ("caches" in window) {
             const keys = await caches.keys();
@@ -206,10 +218,11 @@ export default function useAuth(): UseAuthReturn {
             );
           }
         } catch (e: unknown) { console.warn("IndexedDB wipe skipped:", getErrorMessage(e)); }
-      }
-    } finally {
-      setLoading(false);
+      })();
     }
+
+    return Promise.resolve();
+
   }, []);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {

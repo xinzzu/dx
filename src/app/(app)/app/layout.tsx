@@ -14,6 +14,7 @@ const HIDE_NAV_PATHS = [
   "/app/catat/transportasi",
   "/app/catat/energi-listrik",
   "/app/catat/konsumsi-makanan",
+  "/app/catat/produksi-sampah",
   "/app/catat/riwayat",
   "/app/profile/manajemen-bangunan",
   "/app/profile/manajemen-bangunan/new",
@@ -27,6 +28,14 @@ const HIDE_NAV_PATHS = [
   "/app/catat/laporan/energi-listrik",
   "/app/catat/laporan/konsumsi-makanan",
   "/app/catat/laporan/produksi-sampah",
+  "/app/catat/laporan/transportasi/[id]/edit",
+  "/app/catat/laporan/energi-listrik/[id]/edit",
+  "/app/catat/laporan/konsumsi-makanan/[id]/edit",  
+  "/app/catat/laporan/produksi-sampah/[id]/edit",
+  // "/app/inspirasi",
+  "/app/catat/laporan/konsumsi-makanan/edit",
+  "/app/catat/laporan/produksi-sampah/edit",
+  "/app/profile/lencana"
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

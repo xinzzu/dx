@@ -3,8 +3,9 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import SWRegister from "./sw-register";
 
-// 1. Impor AuthProvider Anda
 import { AuthProvider } from "@/contexts/AuthContext";
+import { Toaster } from "@/components/ui/sonner";
+import { Toaster as SonnerToaster } from "sonner";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -14,19 +15,15 @@ const poppins = Poppins({
   preload: true,
 });
 
-// (Metadata Anda sudah bagus, tidak perlu diubah)
 export const metadata: Metadata = {
   title: "1000 Cahaya",
   description: "Platform jejak karbon untuk personal dan organisasi",
   manifest: "/manifest.json",
-  // ... (sisa metadata)
 };
 
-// (Viewport Anda sudah bagus, tidak perlu diubah)
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // ... (sisa viewport)
 };
 
 export default function RootLayout({
@@ -36,15 +33,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id" className={poppins.variable}>
-      {/* 💡 Hapus overflow-hidden dari body */}
       <body>
         <AuthProvider>
-          {/* 💡 Ubah h-screen menjadi h-full (atau biarkan default) jika body boleh scroll */}
           <div className="bg-white">
             {children}
           </div>
           <div id="modal-root"></div>
           <SWRegister />
+          <Toaster />
+          <SonnerToaster />
         </AuthProvider>
       </body>
     </html>

@@ -102,6 +102,10 @@ export const useAssetWizard = create<State>()(
             } as Building,
           ],
         });
+        try {
+          const after = get().buildings;
+          console.debug("[asset-wizard] addBuilding called. buildings count:", after.length, "last:", after.slice(-1)[0]);
+        } catch {}
       },
 
       updateBuilding: (id, patch) =>
@@ -129,6 +133,10 @@ export const useAssetWizard = create<State>()(
         set({
           vehicles: [...get().vehicles, { ...(p as Omit<Vehicle, "id">), id: p.id ?? crypto.randomUUID(), apiId: p.apiId } as Vehicle],
         });
+        try {
+          const after = get().vehicles;
+          console.debug("[asset-wizard] addVehicle called. vehicles count:", after.length, "last:", after.slice(-1)[0]);
+        } catch {}
       },
 
       updateVehicle: (id, patch) =>
@@ -142,7 +150,10 @@ export const useAssetWizard = create<State>()(
         set({ vehicles: get().vehicles.filter((x) => x.id !== id) }),
 
       // ===== Utils =====
-      reset: () => set({ buildings: [], vehicles: [] }),
+      reset: () => {
+        set({ buildings: [], vehicles: [] });
+        try { console.debug("[asset-wizard] reset() called - store cleared"); } catch {}
+      },
     }),
     { name: "asset-wizard" }
   )

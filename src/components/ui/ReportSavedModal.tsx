@@ -8,27 +8,17 @@ type Props = {
   open: boolean;
   onClose?: () => void;
   reportKind: string;
-  total?: number | null;
+  total?: string;
   unit?: string;
   redirectTo?: string;
   cleanEnergy?: { type: string; energy_produced: number } | null;
 };
 
-// Helper: batasi maksimal 2 desimal, pakai locale Indonesia
-function formatCO2(value: number | null | undefined, maxDecimals = 2) {
-  if (value == null || Number.isNaN(value)) return "—";
-  const rounded = Math.round(Number(value) * 10 ** maxDecimals) / 10 ** maxDecimals;
-  return new Intl.NumberFormat("id-ID", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: maxDecimals,
-  }).format(rounded);
-}
-
 export default function ReportSavedModal({
   open,
   onClose,
   reportKind,
-  total = null,
+  total = "0",
   unit = "kg CO₂e",
   redirectTo,
   cleanEnergy = null,
@@ -60,9 +50,13 @@ export default function ReportSavedModal({
           <div className="w-full rounded-lg border border-emerald-100 bg-emerald-50 p-4">
             <div className="text-xs text-black/60">Total Emisi CO₂</div>
             <div className="mt-2 text-3xl font-semibold text-black">
-              {formatCO2(total, 2)}
+              {total}
+              {/* sudah di format */}
             </div>
-            <div className="text-sm text-emerald-600">{unit}</div>
+            <div className="text-sm text-emerald-600">
+              {unit}
+              {/* sudah di format */}
+            </div>
           </div>
 
           {cleanEnergy && (

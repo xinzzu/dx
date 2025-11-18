@@ -11,9 +11,11 @@ import { authService } from "@/services/auth";
 
 export default function HomePage() {
   const router = useRouter();
-  const { currentUser, getIdToken } = useAuth();
+  const { currentUser, logout, getIdToken } = useAuth();
   const [totalCarbonKg, setTotalCarbonKg] = useState(0);
   const [userName, setUserName] = useState("Pengguna");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const AFTER_LOGOUT_PATH = "/";
 
   const getBackendToken = useCallback(async () => {
     let backendToken = authService.getToken();
@@ -37,7 +39,12 @@ export default function HomePage() {
         // Get user info
         const { userService } = await import("@/services/user");
         const userData = await userService.getMe(token);
-        setUserName(userData?.individual_profile?.full_name || userData?.email || "Pengguna");
+
+        // Prefer institution name when user_type is 'lembaga', otherwise individual full name.
+        const nameFromProfile = (userData?.user_type === "lembaga")
+          ? (userData?.institution_profile?.name ?? userData?.email ?? "Pengguna")
+          : (userData?.individual_profile?.full_name ?? userData?.email ?? "Pengguna");
+        setUserName(nameFromProfile);
 
         // Get carbon footprint
         const { reportsService } = await import("@/services/reports");
@@ -46,11 +53,27 @@ export default function HomePage() {
         setTotalCarbonKg(current);
       } catch (error) {
         console.error("Failed to load home data:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        if (errorMessage.includes("401 Unauthorized")) {
+          console.log("Unauthorized error detected. Clearing token and redirecting to login.");
+          onLogout();
+          return;
+        }
       }
     }
 
     loadData();
   }, [getBackendToken]);
+
+  function onLogout() {
+    setIsLoggingOut(true);
+    logout()
+      .finally(() => {
+        setIsLoggingOut(false);
+        router.replace(AFTER_LOGOUT_PATH);
+      });
+  }
 
   const sampleArticles = [
     {

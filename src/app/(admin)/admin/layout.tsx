@@ -38,7 +38,10 @@ export default function AdminLayout({ children }: LayoutProps) {
   const { isLoading } = useAdminAuth();
 
   const pathname = usePathname();
-  const title = pathTitles[pathname] || 'Dashboard';
+  let title = pathTitles[pathname] || 'Dashboard';
+  if (pathname?.startsWith('/admin/emissions/detail/')) {
+    title = 'Detail Emisi Pengguna';
+  }
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">

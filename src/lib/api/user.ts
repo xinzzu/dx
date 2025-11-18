@@ -1,5 +1,4 @@
-import { UserTypes, UserWithRegion } from '@/types/userType';
-import { getProvinceName, getRegencyName, getDistrictName, getVillageName } from './region';
+import type { UserTypes, UserFilters, UserListResponse } from '@/types/userType';
 
 const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -8,24 +7,33 @@ function getAuthHeader(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-// ==============================
-// 👥 Ambil user dengan pagination
-// ==============================
-export async function getUserList(
-  page = 1,
-  perPage = 10
-): Promise<{
+/**
+ * ✅ Fetch user list dengan pagination & filters
+ */
+export async function getUserList(filters: UserFilters = {}): Promise<{
   data: UserTypes[];
-  pagination: {
-    current_page: number;
-    per_page: number;
-    total_pages: number;
-    total_items: number;
-    has_previous: boolean;
-    has_next: boolean;
-  };
+  pagination: UserListResponse['pagination'];
 }> {
-  const res = await fetch(`${API_URL}/admin/users?page=${page}&per_page=${perPage}`, {
+  const { page = 1, per_page = 10, user_type, search } = filters; // ✅ Ganti 'name' jadi 'search'
+
+  // ✅ Build query params
+  const params = new URLSearchParams({
+    page: String(page),
+    per_page: String(per_page),
+  });
+
+  if (user_type && user_type !== 'semua') {
+    params.set('user_type', user_type);
+  }
+
+  if (search && search.trim()) {
+    params.set('search', search.trim()); // ✅ Ganti 'name' jadi 'search'
+  }
+
+  const url = `${API_URL}/admin/users?${params.toString()}`;
+  console.log('🔍 Fetching users:', url);
+
+  const res = await fetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -33,21 +41,21 @@ export async function getUserList(
     },
   });
 
-  const data = await res.json();
+  const json: UserListResponse = await res.json();
 
-  if (!res.ok || !data.meta?.success) {
-    throw new Error(data.meta?.message || 'Failed to fetch user data');
+  if (!res.ok || !json.meta?.success) {
+    throw new Error(json.meta?.message || 'Failed to fetch user data');
   }
 
   return {
-    data: data.data,
-    pagination: data.pagination,
+    data: json.data,
+    pagination: json.pagination,
   };
 }
 
-// ==============================
-// 👤 Ambil user berdasarkan ID
-// ==============================
+/**
+ * ✅ Fetch user by ID
+ */
 export async function getUserById(id: string): Promise<UserTypes> {
   const res = await fetch(`${API_URL}/admin/users/${id}`, {
     method: 'GET',
@@ -57,31 +65,11 @@ export async function getUserById(id: string): Promise<UserTypes> {
     },
   });
 
-  const data = await res.json();
+  const json = await res.json();
 
-  if (!res.ok || !data.meta?.success) {
-    throw new Error(data.meta?.message || 'Failed to fetch user detail');
+  if (!res.ok || !json.meta?.success) {
+    throw new Error(json.meta?.message || 'Failed to fetch user detail');
   }
 
-  return data.data;
-}
-
-// ==============================
-// 🌍 Gabungkan data user + wilayah (nama lengkap)
-// ==============================
-export async function enrichUserWithRegion(user: UserTypes): Promise<UserWithRegion> {
-  const [provinceName, cityName, districtName, subDistrictName] = await Promise.all([
-    user.province ? getProvinceName(user.province) : Promise.resolve('-'),
-    user.city ? getRegencyName(user.city, user.province) : Promise.resolve('-'),
-    user.district ? getDistrictName(user.district, user.city) : Promise.resolve('-'),
-    user.sub_district ? getVillageName(user.sub_district, user.district) : Promise.resolve('-'),
-  ]);
-
-  return {
-    ...user,
-    province_name: provinceName,
-    city_name: cityName,
-    district_name: districtName,
-    sub_district_name: subDistrictName,
-  };
+  return json.data;
 }

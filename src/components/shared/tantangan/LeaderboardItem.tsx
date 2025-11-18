@@ -55,7 +55,7 @@ export default function LeaderboardItem({
 
       {/* Nama */}
       <div className="flex-1 min-w-0">
-        <div className="truncate font-medium">{name}</div>
+        <div className={`truncate font-medium ${rank > 3 ? 'text-black' : ''}`}>{name}</div>
         <div className="text-xs text-black/60">Total Laporan: 12x</div>
         <div className="text-xs text-black/60">Jejak Karbon: 17 kg CO2e</div>
       </div>

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useAssetWizard } from "@/stores/assetWizard";
 import useAuth from "@/hooks/useAuth";
 import { assetsService } from "@/services/assets";
+import { toast } from "sonner";
 
 function formatVA(n: number) {
   return `${n.toLocaleString("id-ID")} VA`;
@@ -66,7 +67,7 @@ export default function BuildingCardList() {
                     removeBuilding(b.id);
                   } catch (err) {
                     console.error("Failed to delete building:", err);
-                    window.alert("Gagal menghapus bangunan. Coba lagi.");
+                    toast.error("Gagal menghapus bangunan. Coba lagi.");
                   } finally {
                     setDeletingId(null);
                   }

@@ -1,6 +1,7 @@
 // src/components/analysis/TrendChart.tsx
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 import {
   Bar,
   BarChart,
@@ -29,7 +30,8 @@ export default function TrendChart({ data }: { data: Point[] }) {
           />
           <Tooltip
             cursor={{ fill: "rgba(0,0,0,0.04)" }}
-            formatter={(v: number) => [`${v} kg CO₂e`, "Emisi"]}
+            // formatter={(v: number) => [`${v} kg CO₂e`, "Emisi"]}
+            formatter={(v: number) => [`${formatCarbonFootprint(v).value} ${formatCarbonFootprint(v).unit}`, "Emisi"]}
           />
           <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#8B7CFF">
             <LabelList

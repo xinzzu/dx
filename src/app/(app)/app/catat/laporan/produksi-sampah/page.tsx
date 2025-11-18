@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import ScrollContainer from "@/components/nav/ScrollContainer";
@@ -8,6 +9,10 @@ import Button from "@/components/ui/Button";
 import { formatDateID, nf } from "@/lib/format";
 import useAuth from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/api/client";
+import { toast } from "sonner";
+import ConfirmDeleteModal from "@/components/ui/ConfirmDeleteModal";
+import { wasteService } from "@/services/waste";
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 
 // ===== Types =====
 type WasteDetail = {
@@ -41,8 +46,10 @@ function EmissionBadge({ value }: { value: number }) {
         <span className="font-medium text-[#04BF68]">Total Emisi</span>
       </div>
       <div className="text-right font-semibold text-[#04BF68]">
-        {nf(value)}{" "}
-        <span className="text-xs font-normal text-[#04BF68]">kg CO₂e</span>
+        {/* {nf(value)}{" "}
+        <span className="text-xs font-normal text-[#04BF68]">kg CO₂e</span> */}
+        {formatCarbonFootprint(value ?? 0).value}{" "}
+        <span className="text-xs font-normal text-[#04BF68]">{formatCarbonFootprint(value ?? 0).unit}</span>
       </div>
     </div>
   );
@@ -52,9 +59,8 @@ function Chevron({ open }: { open: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      className={`h-4 w-4 transition-transform ${
-        open ? "rotate-180" : "rotate-0"
-      }`}
+      className={`h-4 w-4 transition-transform ${open ? "rotate-180" : "rotate-0"
+        }`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -70,8 +76,8 @@ function WasteCard({
   onDelete,
 }: {
   data: WasteReportItem;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -93,7 +99,7 @@ function WasteCard({
             {formatDateID(data.report_date)}
           </div>
           <div className="text-xs text-gray-600">
-            Periode {data.period === "weekly" ? "Mingguan" : "Bulanan"}
+            Periode {data.period === "weekly" ? "mingguan" : "bulanan"}
           </div>
         </div>
       </div>
@@ -119,11 +125,13 @@ function WasteCard({
               <div>
                 <div className="font-medium">{d.name}</div>
                 <div className="text-sm text-gray-600">
-                  {nf(d.amount_kg)} kg
+                  {/* {nf(d.amount_kg)} kg */}
+                  {formatCarbonFootprint(d.amount_kg).value} {formatCarbonFootprint(d.amount_kg).unit}
                 </div>
               </div>
               <div className="rounded-md bg-emerald-50 px-2 py-1 text-sm font-medium text-[#04BF68]">
-                {nf(d.emission_kgco2e)} kg CO₂e
+                {/* {nf(d.emission_kgco2e)} kg CO₂e */}
+                {formatCarbonFootprint(d.emission_kgco2e).value} {formatCarbonFootprint(d.emission_kgco2e).unit}
               </div>
             </div>
           ))}
@@ -134,12 +142,13 @@ function WasteCard({
 
       {/* Actions (Edit / Hapus) */}
       <div className="grid grid-cols-2 gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="!bg-emerald-50 !border-emerald-200 !text-emerald-700"
-          onClick={() => onEdit(data.id)}
-        >
+        {onEdit ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="bg-emerald-50! border-emerald-200! text-emerald-700!"
+            onClick={() => onEdit(data.id)}
+          >
           <svg
             viewBox="0 0 24 24"
             className="mr-2 h-4 w-4"
@@ -150,13 +159,17 @@ function WasteCard({
             <path d="M12 20h9M16.5 3.5l4 4L7 21H3v-4L16.5 3.5z" />
           </svg>
           Edit
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="!bg-red-50 !border-red-200 !text-red-600"
-          onClick={() => onDelete(data.id)}
-        >
+          </Button>
+        ) : (
+          <div />
+        )}
+        {onDelete ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="bg-red-50! border-red-200! text-red-600!"
+            onClick={() => onDelete(data.id)}
+          >
           <svg
             viewBox="0 0 24 24"
             className="mr-2 h-4 w-4"
@@ -167,7 +180,10 @@ function WasteCard({
             <path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-1 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h10" />
           </svg>
           Hapus
-        </Button>
+          </Button>
+        ) : (
+          <div />
+        )}
       </div>
     </article>
   );
@@ -177,8 +193,15 @@ function WasteCard({
 
 export default function WasteReportListPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from") || null;
   const [items, setItems] = useState<WasteReportItem[] | null>(null);
   const { getIdToken } = useAuth();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [disableActions, setDisableActions] = useState(false);
+  const [noPrefillData, setNoPrefillData] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -186,23 +209,73 @@ export default function WasteReportListPage() {
     async function loadWasteReports() {
       setItems(null);
       try {
-        const firebaseToken = await getIdToken();
-        if (!firebaseToken) {
-          if (mounted) setItems([]);
-          return;
+        // Prefer backend access token; exchange firebase token when needed
+        const { authService } = await import("@/services/auth");
+        let token = authService.getToken();
+        if (!token) {
+          const firebaseToken = await getIdToken();
+          if (!firebaseToken) {
+            if (mounted) setItems([]);
+            return;
+          }
+          token = await authService.loginWithGoogle(firebaseToken);
+          try {
+            authService.saveToken(token);
+          } catch { }
         }
 
-        const res = await fetchWithAuth(`/me/reports/waste`, firebaseToken);
-        const reports = Array.isArray(res) ? (res as unknown[]) : (res || []) as unknown[];
+        const prefillMonth = searchParams.get("prefillMonth");
+        const prefillReportId = searchParams.get("prefillReportId") || null;
 
-        const mapped: WasteReportItem[] = reports.map((r, ri) => {
+        let reportsRaw: unknown[] = [];
+
+        if (prefillMonth) {
+          // if user came from riwayat, prefer the by-month endpoint and do not fall back to current-month
+          const nowIso = new Date().toISOString().slice(0, 7); // YYYY-MM
+          setDisableActions(prefillMonth !== nowIso);
+
+          const [y, m] = prefillMonth.split("-");
+          const year = Number(y || 0);
+          const month = Number(m || 0);
+
+          const byMonthRes = await fetchWithAuth(`/me/reports/waste/by-month?year=${year}&month=${month}`, token);
+          if (Array.isArray(byMonthRes)) {
+            reportsRaw = byMonthRes as unknown[];
+          } else if (byMonthRes && typeof byMonthRes === "object" && Array.isArray((byMonthRes as Record<string, unknown>).data)) {
+            reportsRaw = (byMonthRes as Record<string, unknown>).data as unknown[];
+          } else {
+            reportsRaw = [];
+          }
+
+          // if by-month is empty and we have a prefillReportId, try single-report fetch
+          if (reportsRaw.length === 0 && prefillReportId) {
+            try {
+              const single = await fetchWithAuth(`/me/reports/waste/${encodeURIComponent(prefillReportId)}`, token);
+              if (single) {
+                reportsRaw = [single as unknown];
+              }
+            } catch {
+              // ignore
+            }
+          }
+        } else {
+          const res = await fetchWithAuth(`/me/reports/waste`, token);
+          if (Array.isArray(res)) reportsRaw = res as unknown[];
+          else if (res && typeof res === "object" && Array.isArray((res as Record<string, unknown>).data)) reportsRaw = (res as Record<string, unknown>).data as unknown[];
+          else reportsRaw = [];
+        }
+
+        // Backend returns an array of report objects without `report_id`.
+        // Use `report_date` as the unique identifier (same as food reports flow)
+        const mapped: WasteReportItem[] = reportsRaw.map((r, ri) => {
           const rec = (r ?? {}) as Record<string, unknown>;
-          const id = typeof rec.report_id === "string" ? rec.report_id : `waste-${ri}`;
-          const report_date = typeof rec.report_date === "string" ? rec.report_date : new Date().toISOString();
+          const report_date = typeof rec.report_date === "string" ? rec.report_date : new Date().toISOString().split("T")[0];
+          const id = report_date; // unique per user per date
           const period = typeof rec.report_type === "string" && rec.report_type === "weekly" ? "weekly" : "monthly";
           const total = typeof rec.total_co2e === "number" ? rec.total_co2e : Number((rec.total_co2e as unknown) ?? 0) || 0;
 
-          const detailsRaw = Array.isArray(rec.waste_details) ? (rec.waste_details as unknown[]) : [];
+          // Backend uses `items` array (see API example) with fields: weight_kg, total_co2e, waste_type
+          const detailsRaw = Array.isArray(rec.items) ? (rec.items as unknown[]) : [];
           const details: WasteDetail[] = detailsRaw.map((wd, idx) => {
             const d = (wd ?? {}) as Record<string, unknown>;
             const name = typeof d.waste_type === "string" ? d.waste_type : "";
@@ -225,7 +298,13 @@ export default function WasteReportListPage() {
           };
         });
 
-        if (mounted) setItems(mapped);
+        if (mounted) {
+          setItems(mapped);
+          // If user specifically requested a month (prefillMonth) and there are no reports,
+          // mark noPrefillData so the UI shows only the "Belum ada laporan." message.
+          if (prefillMonth && mapped.length === 0) setNoPrefillData(true);
+          else setNoPrefillData(false);
+        }
       } catch (err) {
         console.error("Failed to load waste reports", err);
         if (mounted) setItems([]);
@@ -237,18 +316,62 @@ export default function WasteReportListPage() {
     return () => {
       mounted = false;
     };
-  }, [getIdToken]);
+  }, [getIdToken, searchParams]);
 
   const data = useMemo(() => items ?? [], [items]);
 
-  const handleEdit = (id: string) => {
-    router.push(`/app/catat/produksi-sampah?report_id=${id}`);
+  // Keep same edit flow as food reports: pass report_date as query param
+  const handleEdit = (reportDate: string) => {
+    const params = new URLSearchParams({ report_date: reportDate });
+    router.push(`/app/catat/laporan/produksi-sampah/edit?${params.toString()}`);
   };
 
   const handleDelete = (id: string) => {
-    if (confirm("Hapus laporan ini?")) {
-      setItems((prev) => (prev ?? []).filter((x) => x.id !== id));
+    // clear any previous delete error and open confirm modal
+    setDeleteError(null);
+    setDeletingId(id);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingId) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      const token = await getIdToken();
+      if (!token) throw new Error("Autentikasi hilang");
+
+      // compute friendly label before mutating state
+      const prev = items ?? [];
+      const found = prev.find((x) => x.id === deletingId);
+      const label = found
+        ? `${formatDateID(found.report_date)}${found.details?.[0]?.name ? ` — ${found.details[0].name}` : ""}`
+        : deletingId;
+
+      // If id looks like a date (YYYY-MM-DD), use DELETE /me/reports/waste/by-date/{date}
+      const dateLike = /^\d{4}-\d{2}-\d{2}$/.test(deletingId);
+      if (dateLike) {
+        await fetchWithAuth(`/me/reports/waste/by-date/${encodeURIComponent(deletingId)}`, token, { method: "DELETE" });
+      } else {
+        await wasteService.deleteReport(deletingId, token);
+      }
+
+      // remove from local list
+      setItems((prev) => (prev ?? []).filter((x) => x.id !== deletingId));
+      setDeletingId(null);
+
+      try {
+        toast.success(`Laporan ${label} berhasil dihapus`);
+      } catch { }
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeleteLoading(false);
     }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteError(null);
+    setDeletingId(null);
   };
 
   return (
@@ -256,7 +379,14 @@ export default function WasteReportListPage() {
       headerTitle="Laporan Produksi Sampah"
       leftContainer={
         <button
-          onClick={() => router.back()}
+          onClick={() => {
+            try {
+              if (from === "riwayat") router.push("/app/catat/riwayat");
+              else router.push("/app/catat/");
+            } catch {
+              router.push("/app/catat/");
+            }
+          }}
           aria-label="Kembali"
           className="grid h-9 w-9 place-items-center"
         >
@@ -265,22 +395,56 @@ export default function WasteReportListPage() {
       }
     >
       <div className="px-4 pb-24">
+        {deleteError ? (
+          <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-3 text-red-700">
+            {deleteError}
+          </div>
+        ) : null}
         <div className="space-y-4">
-          {data.map((it) => (
-            <WasteCard
-              key={it.id}
-              data={it}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
-          ))}
-
           {items === null && <p>Memuat…</p>}
-          {items?.length === 0 && (
+
+          {noPrefillData ? (
             <p className="text-sm text-gray-600">Belum ada laporan.</p>
+          ) : (
+            <>
+              {data.map((it) => (
+                <WasteCard
+                  key={it.id}
+                  data={it}
+                  onEdit={disableActions ? undefined : handleEdit}
+                  onDelete={disableActions ? undefined : handleDelete}
+                />
+              ))}
+
+              {items?.length === 0 && (
+                <p className="text-sm text-gray-600">Belum ada laporan.</p>
+              )}
+            </>
           )}
         </div>
       </div>
+      <ConfirmDeleteModal
+        open={Boolean(deletingId)}
+        title="Hapus Laporan Produksi Sampah"
+        message="Laporan akan dihapus secara permanen. Anda tidak dapat mengembalikan data ini."
+        dangerLabel="Hapus"
+        cancelLabel="Batal"
+        loading={deleteLoading}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        meta={
+          deletingId
+            ? [
+              {
+                label: "Tanggal",
+                value:
+                  (items ?? []).find((x) => x.id === deletingId)
+                    ?.report_date ?? deletingId,
+              },
+            ]
+            : []
+        }
+      />
     </ScrollContainer>
   );
 }

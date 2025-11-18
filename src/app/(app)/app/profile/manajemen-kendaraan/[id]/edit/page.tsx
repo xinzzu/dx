@@ -9,6 +9,8 @@ import Button from "@/components/ui/Button";
 import useAuth from "@/hooks/useAuth";
 import { assetsService, VehicleResponse } from "@/services/assets";
 import { vehicleService, VehicleEmissionFactor } from "@/services/vehicle";
+import { toast } from "sonner";
+import { userFriendlyError } from "@/lib/userError";
 
 export default function EditVehiclePage() {
   const router = useRouter();
@@ -48,13 +50,13 @@ export default function EditVehiclePage() {
         if (foundVehicle) {
           setVehicle(foundVehicle);
           setName(foundVehicle.name);
-            setEmissionFactorId(foundVehicle.emission_factor_id);
-            // initialize selects from metadata if available
-            const meta = foundVehicle.metadata;
-            if (meta) {
-              if (meta.vehicle_type) setVehicleType(meta.vehicle_type as string);
-              if (meta.capacity_range) setCapacityRange(meta.capacity_range as string);
-            }
+          setEmissionFactorId(foundVehicle.emission_factor_id);
+          // initialize selects from metadata if available
+          const meta = foundVehicle.metadata;
+          if (meta) {
+            if (meta.vehicle_type) setVehicleType(meta.vehicle_type as string);
+            if (meta.capacity_range) setCapacityRange(meta.capacity_range as string);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch vehicle:", error);
@@ -143,7 +145,7 @@ export default function EditVehiclePage() {
     try {
       const token = await getIdToken();
       if (!token) {
-        alert('Token tidak tersedia. Silakan login kembali.');
+        toast.error('Token tidak tersedia. Silakan login kembali.');
         return;
       }
 
@@ -163,8 +165,8 @@ export default function EditVehiclePage() {
           // persist selected fuel product if set in the editor (allow saving)
           // fuel_product intentionally omitted in this edit flow (takeout)
         },
-  // Always set active:true on update so edited vehicles become active
-  active: true,
+        // Always set active:true on update so edited vehicles become active
+        active: true,
       };
 
       console.debug('Updating vehicle with payload:', payload);
@@ -187,14 +189,14 @@ export default function EditVehiclePage() {
 
       if (!updated) {
         // Still no data — surface to user and don't blindly navigate back.
-        alert('Pembaruan kendaraan tidak dapat diverifikasi. Silakan periksa jaringan atau coba lagi.');
+        toast.error('Pembaruan kendaraan tidak dapat diverifikasi. Silakan periksa jaringan atau coba lagi.');
         return;
       }
 
       router.back();
     } catch (err) {
       console.error('Failed to update vehicle:', err);
-      alert(err instanceof Error ? err.message : 'Gagal menyimpan kendaraan');
+      toast.error(userFriendlyError(err, 'Gagal menyimpan kendaraan. Silakan coba lagi.'));
     }
   };
 
@@ -207,19 +209,19 @@ export default function EditVehiclePage() {
   }
 
   if (!vehicle) {
-      <main className="mx-auto max-w-screen-sm px-4 py-8">
-        <p className="text-center text-sm text-black/60">Kendaraan tidak ditemukan.</p>
-        <div className="mt-4 text-center">
-          <Button onClick={() => router.back()}>Kembali</Button>
-        </div>
-      </main>
-    
+    <main className="mx-auto max-w-screen-sm px-4 py-8">
+      <p className="text-center text-sm text-black/60">Kendaraan tidak ditemukan.</p>
+      <div className="mt-4 text-center">
+        <Button onClick={() => router.push('/app/profile/manajemen-kendaraan')}>Kembali</Button>
+      </div>
+    </main>
+
   }
 
   const vehicleTypeOptions = vehicleTypes?.map((type) => ({ value: type, label: type })) || [];
   const capacityOptions = capacityRanges?.map((range) => ({ value: range, label: range })) || [];
   const fuelTypeOptions = fuelOptions?.map((opt) => ({ value: opt.id, label: opt.fuelType })) || [];
-  
+
 
   return (
     <main className="mx-auto max-w-screen-sm px-4 pb-28">
@@ -264,8 +266,8 @@ export default function EditVehiclePage() {
             loadingCapacities
               ? "Memuat..."
               : vehicleType
-              ? "Pilih kapasitas mesin"
-              : "Pilih jenis kendaraan dulu"
+                ? "Pilih kapasitas mesin"
+                : "Pilih jenis kendaraan dulu"
           }
           options={capacityOptions}
           value={capacityRange}
@@ -284,8 +286,8 @@ export default function EditVehiclePage() {
             loadingFuels
               ? "Memuat..."
               : capacityRange
-              ? "Pilih jenis bahan bakar"
-              : "Pilih kapasitas mesin dulu"
+                ? "Pilih jenis bahan bakar"
+                : "Pilih kapasitas mesin dulu"
           }
           options={fuelTypeOptions}
           value={emissionFactorId}

@@ -13,7 +13,9 @@ export interface BuildingMetadata {
   floors?: number;
   construction_year?: number;
   building_type?: string;
-  electronics_inventory?: Record<string, number>; // { ac_units: 25, computers: 80, ... }
+  // Electronics inventory can be either a keyed map (legacy) or
+  // an array of items { name, qty } (newer flow).
+  electronics_inventory?: Record<string, number> | { name: string; qty: number }[]; // { ac_units: 25, computers: 80, ... } or [{ name, qty }]
   facilities?: string[];
 }
 

@@ -1,31 +1,48 @@
 export type UserType = 'individu' | 'lembaga';
 
-export interface IndividualProfile {
-  full_name: string;
-  gender: 'male' | 'female';
-}
-
-export interface InstitutionProfile {
-  name: string;
-}
-
 export interface UserTypes {
-  id: string;
+  user_id: string;
+  name: string;
+  user_type: UserType;
   email: string;
   phone_number: string;
-  user_type: UserType;
-  province: string;
-  city: string;
-  district: string;
-  sub_district: string;
-  active: boolean;
-  individual_profile?: IndividualProfile;
-  institution_profile?: InstitutionProfile;
+  address: string;
+  is_active: boolean;
 }
 
-export interface UserWithRegion extends UserTypes {
-  province_name: string;
-  city_name: string;
-  district_name: string;
-  sub_district_name: string;
+export interface UserFilters {
+  user_type?: 'individu' | 'lembaga' | 'semua';
+  search?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface UserPagination {
+  current_page: number;
+  per_page: number;
+  total_pages: number;
+  total_items: number;
+  has_previous: boolean;
+  has_next: boolean;
+  first_page: number;
+  last_page: number;
+}
+
+export interface UserLinks {
+  self: string;
+  first: string;
+  last: string;
+  next: string | null;
+  prev: string | null;
+}
+
+export interface UserListResponse {
+  reqId: string;
+  meta: {
+    success: boolean;
+    message: string;
+  };
+  data: UserTypes[];
+  pagination: UserPagination;
+  links: UserLinks;
 }

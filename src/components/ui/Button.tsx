@@ -2,7 +2,7 @@ import { ComponentPropsWithoutRef } from "react"
 
 type ButtonProps = ComponentPropsWithoutRef<"button"> & {
   variant?: "primary" | "outline" | "ghost" | "danger"
-  size?: "sm" | "md" | "lg"
+  size?: "xs" | "sm" | "md" | "lg"
   fullWidth?: boolean
 }
 
@@ -25,6 +25,7 @@ export default function Button({
   }
 
   const sizes = {
+    xs: "h-8 px-2",
     sm: "h-10 px-4",
     md: "h-11 px-5",
     lg: "h-12 px-6",

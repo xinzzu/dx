@@ -4,29 +4,34 @@ import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
+import { userFriendlyError } from "@/lib/userError";
+
 
 import WasteFormSection from "@/components/shared/catat/waste/WasteFormSection";
 import ReportSavedModal from "@/components/ui/ReportSavedModal";
 import type { WasteCategoryDef, WasteReportPayload } from "@/components/shared/catat/waste/types";
 import { wasteService, type WasteReportRequest, type WasteType } from "@/services/waste";
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 
 export default function Page() {
   const router = useRouter();
   const { getIdToken } = useAuth();
 
   const [categories, setCategories] = useState<WasteCategoryDef[]>([
-    { id: "plastik", label: "Plastik",               hint: "Botol, kantong, kemasan" },
-    { id: "kertas",  label: "Kertas & Karton",       hint: "Kertas tulis, kardus" },
-    { id: "logam",   label: "Logam",                 hint: "Kaleng aluminium, besi" },
-    { id: "kaca",    label: "Kaca",                  hint: "Botol/pecahan kaca" },
-    { id: "organik", label: "Organik",               hint: "Sisa makanan, daun" },
-    { id: "ewaste",  label: "Elektronik (E-waste)",  hint: "Baterai, lampu, perangkat" },
-    { id: "b3",      label: "Limbah Berbahaya (B3)", hint: "Obat, cat, minyak" },
+    { id: "plastik", label: "Plastik", hint: "Botol, kantong, kemasan" },
+    { id: "kertas", label: "Kertas & Karton", hint: "Kertas tulis, kardus" },
+    { id: "logam", label: "Logam", hint: "Kaleng aluminium, besi" },
+    { id: "kaca", label: "Kaca", hint: "Botol/pecahan kaca" },
+    { id: "organik", label: "Organik", hint: "Sisa makanan, daun" },
+    { id: "ewaste", label: "Elektronik (E-waste)", hint: "Baterai, lampu, perangkat" },
+    { id: "b3", label: "Limbah Berbahaya (B3)", hint: "Obat, cat, minyak" },
   ]);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [savedTotal, setSavedTotal] = useState<number | null>(null);
+  const [savedTotal, setSavedTotal] = useState<number>(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Fetch mapping waste types
   useEffect(() => {
@@ -63,6 +68,7 @@ export default function Page() {
         );
       } catch (e) {
         console.error("❌ Gagal memuat waste-types:", e);
+        try { setLoadError(userFriendlyError(e, "Gagal memuat tipe sampah. Silakan coba lagi.")); } catch { setLoadError("Gagal memuat tipe sampah."); }
       }
     })();
   }, [getIdToken]);
@@ -102,7 +108,9 @@ export default function Page() {
       setModalOpen(true);
       // Redirect dilakukan oleh modal saat ditutup (router.push('/app/catat'))
     } catch (err) {
+      // Log error for diagnostics
       console.error("❌ Gagal membuat laporan sampah:", err);
+      try { setSubmitError(userFriendlyError(err, "Gagal membuat laporan sampah. Silakan coba lagi.")); } catch { setSubmitError("Gagal membuat laporan sampah."); }
     }
   };
 
@@ -116,9 +124,15 @@ export default function Page() {
         <div className="h-9 w-9" />
       </header>
 
-      <div className="mx-auto mt-3 h-[2px] w-full" style={{ backgroundColor: "var(--color-primary)" }} />
+      <div className="mx-auto mt-3 h-0.5 w-full" style={{ backgroundColor: "var(--color-primary)" }} />
 
       <div className="py-4">
+        {loadError ? (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{loadError}</div>
+        ) : null}
+        {submitError ? (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{submitError}</div>
+        ) : null}
         <WasteFormSection categories={categories} onSubmit={handleSubmit} />
       </div>
 
@@ -127,8 +141,10 @@ export default function Page() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         reportKind="Produksi Sampah"
-        total={savedTotal}
-        unit="kg CO₂e"
+        // total={savedTotal}
+        // unit="kg CO₂e"
+        total={formatCarbonFootprint(savedTotal).value}
+        unit={formatCarbonFootprint(savedTotal).unit}
         redirectTo="/app/catat"
       />
     </main>

@@ -10,7 +10,7 @@ import useAuth from "@/hooks/useAuth";
 import { assetsService, VehicleResponse } from "@/services/assets";
 
 export default function KendaraanPage() {
-  const { vehicles, addVehicle, reset } = useAssetWizard();
+  const { vehicles, addVehicle } = useAssetWizard();
   const { getIdToken } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -27,7 +27,6 @@ export default function KendaraanPage() {
           return;
         }
 
-        reset();
         const apiVehicles = await assetsService.getVehicles(token);
 
         // Convert API vehicles to store format and add to store

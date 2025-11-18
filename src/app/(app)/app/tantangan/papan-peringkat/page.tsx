@@ -33,7 +33,6 @@ const allUsers = [
   { rank: 99, name: "Aziz Nurrahman", avatar: "/images/tantangan/avatars/3.png", points: "50" },
 ];
 
-const PRIMARY_COLOR = "text-emerald-600";
 const PRIMARY_BG = "bg-emerald-50";
 
 const me = { rankLabel: "100++", points: 50 };
@@ -64,7 +63,12 @@ export default function PapanPeringkatPage() {
 
         const { userService } = await import("@/services/user");
         const userData = await userService.getMe(token);
-        setUserName(userData?.individual_profile?.full_name || userData?.email || "Pengguna");
+        // Prefer institution name for lembaga users, otherwise individual full name, then fallback to email
+        const displayName =
+          userData?.user_type === "lembaga"
+            ? (userData?.institution_profile?.name ?? userData?.email ?? "Pengguna")
+            : (userData?.individual_profile?.full_name ?? userData?.email ?? "Pengguna");
+        setUserName(displayName);
       } catch (error) {
         console.error("Failed to load home data:", error);
       }
@@ -80,7 +84,7 @@ export default function PapanPeringkatPage() {
           <Link href="/app/tantangan" aria-label="Kembali" className="h-9 w-9 grid place-items-center">
             <Image src="/arrow-left.svg" alt="" width={18} height={18} />
           </Link>
-          <h1 className="flex-1 text-center text-xl text-black">Papan Peringkat</h1>
+          <h1 className="flex-1 text-center text-xl font-semibold text-black">Papan Peringkat</h1>
           <div className="h-9 w-9" />
         </div>
         <div className="h-px w-full bg-gray-200" />
@@ -144,11 +148,11 @@ export default function PapanPeringkatPage() {
             </div>
 
             <div className="flex items-center space-x-6 text-right">
-              <div className="w-16 flex-shrink-0">
+              <div className="w-16 shrink-0">
                 <div className="text-xs text-gray-600">Rank</div>
                 <div className="text-lg font-extrabold text-emerald-600">{me.rankLabel}</div>
               </div>
-              <div className="w-16 flex-shrink-0">
+              <div className="w-16 shrink-0">
                 <div className="text-xs text-gray-600">Poin</div>
                 <div className="text-lg font-extrabold text-emerald-600">{me.points}</div>
               </div>

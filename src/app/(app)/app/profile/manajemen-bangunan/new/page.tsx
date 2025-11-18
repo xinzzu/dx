@@ -10,8 +10,9 @@ import { authService } from "@/services/auth";
 import { areaService, Province, Regency, District, Village } from "@/services/area";
 import { electricityService, ElectricityCategory, ElectricityTariff } from "@/services/electricity";
 import { assetsService } from "@/services/assets";
-import ApplianceSheet from "@/features/assets/profile/buidling/ApplianceSheet";
 import type { ApplianceId } from "@/stores/assetWizard";
+import { toast } from "sonner";
+import { userFriendlyError } from "@/lib/userError";
 
 export default function NewBuildingPage() {
   const router = useRouter();
@@ -28,9 +29,7 @@ export default function NewBuildingPage() {
   const [kelurahan, setKelurahan] = useState("");
   const [postalCode, setPostalCode] = useState("");
 
-  // Appliances (electronics inventory)
-  const [appliances, setAppliances] = useState<Partial<Record<ApplianceId, number>>>({});
-  const [showApplianceSheet, setShowApplianceSheet] = useState(false);
+  // (ApplianceSheet removed for the "new" flow)
 
   // API Data
   const [categories, setCategories] = useState<ElectricityCategory[]>([]);
@@ -98,13 +97,13 @@ export default function NewBuildingPage() {
     async function loadTariffs(catId: string) {
       setLoadingTariffs(true);
       setTariffs([]);
-      
+
       try {
         const token = authService.getToken();
         if (!token) return;
-        
+
         const data = await electricityService.getTariffsByCategory(catId, token);
-        
+
         // Client-side filter as fallback
         const filtered = data.filter((t) => t.category_id === catId);
         setTariffs(filtered);
@@ -220,7 +219,7 @@ export default function NewBuildingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Peralatan listrik sekarang opsional (tidak wajib)
 
     setSubmitting(true);
@@ -232,9 +231,9 @@ export default function NewBuildingPage() {
       // Get user profile to get user_id (REQUIRED by backend)
       const { userService } = await import("@/services/user");
       const profile = await userService.getMe(token);
-      
+
       if (!profile.id) {
-        alert("User ID tidak tersedia");
+        toast.error("User ID tidak tersedia");
         return;
       }
 
@@ -244,7 +243,12 @@ export default function NewBuildingPage() {
         // Remove leading zeros and keep only valid UUID characters (0-9, a-f, -)
         return uuid.replace(/^0+/, '').replace(/[^0-9a-f-]/gi, '');
       };
-      
+
+      if (isNaN(Number(postalCode))) {
+        toast.error("Kode Pos harus berupa angka.");
+        return;
+      }
+
       const payload = {
         name,
         user_id: profile.id, // REQUIRED: User ID from backend
@@ -258,7 +262,6 @@ export default function NewBuildingPage() {
         full_address: alamatJalan,
         metadata: {
           area_sqm: luas ? parseFloat(luas) : undefined,
-          electronics_inventory: appliances,
         },
       };
 
@@ -278,12 +281,12 @@ export default function NewBuildingPage() {
       });
 
       await assetsService.createBuildingDirect(payload, token);
-      
-      alert("Bangunan berhasil ditambahkan!");
+
+      toast.success("Bangunan berhasil ditambahkan!");
       router.push("/app/profile/manajemen-bangunan");
     } catch (error) {
-      console.error("Failed to create building:", error);
-      alert(error instanceof Error ? error.message : "Gagal menambahkan bangunan");
+  console.error("Failed to create building:", error);
+  toast.error(userFriendlyError(error, "Gagal menambahkan bangunan. Silakan coba lagi."));
     } finally {
       setSubmitting(false);
     }
@@ -404,38 +407,14 @@ export default function NewBuildingPage() {
         <TextField
           label="Kode Pos"
           placeholder="Contoh: 54473"
+          type="text"
+          inputMode="numeric"
+          maxLength={6}
           value={postalCode}
           onChange={(e) => setPostalCode(e.target.value)}
         />
 
-        {/* Appliances Section */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Peralatan Listrik <span className="text-xs text-gray-500">(Opsional)</span>
-          </label>
-          <p className="text-xs text-gray-500 mb-2">Tambahkan peralatan listrik yang ada di bangunan ini</p>
-          <button
-            type="button"
-            onClick={() => setShowApplianceSheet(true)}
-            className="w-full rounded-xl border-2 border-dashed border-emerald-500/60 bg-white p-4 text-left hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="text-sm font-medium text-emerald-600">
-                  {Object.values(appliances).some(count => count > 0)
-                    ? "Peralatan Listrik"
-                    : "+ Peralatan Listrik"}
-                </div>
-                <div className="text-xs text-black/60 mt-1">
-                  {Object.values(appliances).some(count => count > 0)
-                    ? `${Object.values(appliances).filter(count => count > 0).length} peralatan terdaftar`
-                    : "0 peralatan terdaftar"}
-                </div>
-              </div>
-              <span className="text-emerald-600">➜</span>
-            </div>
-          </button>
-        </div>
+        {/* Peralatan Listrik omitted on this page */}
 
         <div className="flex gap-3 pt-4">
           <Button
@@ -456,16 +435,7 @@ export default function NewBuildingPage() {
         </div>
       </form>
 
-      {/* Appliance Sheet */}
-      <ApplianceSheet
-        open={showApplianceSheet}
-        initial={appliances}
-        onClose={() => setShowApplianceSheet(false)}
-        onApply={(vals) => {
-          setAppliances(vals);
-          setShowApplianceSheet(false);
-        }}
-      />
+      
     </main>
   );
 }

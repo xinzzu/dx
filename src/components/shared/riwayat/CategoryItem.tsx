@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { CategoryStat, Accent } from "./types";
 import { ChevronRight } from "lucide-react";
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 
 // const styles: Record<Accent, { border: string; text: string }> = {
 //   orange: { border: "border-orange-400", text: "text-orange-600" },
@@ -54,9 +55,10 @@ export function CategoryItem({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={`text-[15px] font-semibold ${s.text} whitespace-nowrap`}>
-            {fmt.format(item.valueKg)}{" "}
-            <span className="text-xs font-normal text-black/60">kg CO₂e</span>
+          <span className={`text-[15px] font-semibold gap-2 ${s.text} whitespace-nowrap`}>
+            {/* {fmt.format(item.valueKg)}{" "} */}
+            {formatCarbonFootprint(item.valueKg).value}{" "}
+            <span className="text-xs font-normal text-black/60">{formatCarbonFootprint(item.valueKg).unit}</span>
           </span>
 
           <ChevronRight

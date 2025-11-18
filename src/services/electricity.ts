@@ -94,4 +94,22 @@ export const electricityService = {
       token
     );
   },
+  /**
+   * List electricity reports for current user
+   * @param token - Authentication token
+   */
+  async listReports(token: string | null) {
+    return fetchWithAuth<Array<Record<string, unknown>>>("/me/reports/electricity", token, { method: "GET" });
+  },
+
+  /**
+   * Delete an electricity report by id
+   * @param reportId - Report identifier
+   * @param token - Authentication token
+   */
+  async deleteReport(reportId: string, token: string | null) {
+    return fetchWithAuth<unknown>(`/me/reports/electricity/${encodeURIComponent(reportId)}`, token, {
+      method: "DELETE",
+    });
+  },
 };

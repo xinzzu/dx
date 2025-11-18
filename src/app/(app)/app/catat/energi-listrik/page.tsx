@@ -9,9 +9,12 @@ import Button from "@/components/ui/Button";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
+import { userFriendlyError } from '@/lib/userError'
+import { formatIDR } from "@/utils/currency";
 import { assetsService, type BuildingResponse } from "@/services/assets";
 import ReportSavedModal from "@/components/ui/ReportSavedModal";
 import ScrollContainer from "@/components/nav/ScrollContainer";
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
 
 // Backend may return a minimal response containing total CO₂e under various keys.
 
@@ -29,19 +32,21 @@ export default function CatatEnergiIndividuPage() {
 
   const [date, setDate] = useState("");
   const [buildingId, setBuildingId] = useState("");
-  const [billCost, setBillCost] = useState("");
+  // keep raw numeric value (digits only) for backend submission and local store
+  const [billCostRaw, setBillCostRaw] = useState("0");
   const [useClean, setUseClean] = useState<boolean | undefined>(undefined);
   const [cleanType, setCleanType] = useState("");
   const [cleanKwh, setCleanKwh] = useState("");
 
   // modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [savedTotal, setSavedTotal] = useState<number | null>(null);
+  const [savedTotal, setSavedTotal] = useState<number>(0);
   const [savedCleanEnergy, setSavedCleanEnergy] = useState<{ type: string; energy_produced: number } | null>(null);
 
   // Fetch buildings from backend
   const [buildings, setBuildings] = useState<BuildingResponse[]>([]);
   const [loadingBuildings, setLoadingBuildings] = useState(true);
+  const [loadBuildingsError, setLoadBuildingsError] = useState<string | null>(null);
 
   // Helper to get backend token
   const getBackendToken = useCallback(async (): Promise<string | null> => {
@@ -64,6 +69,7 @@ export default function CatatEnergiIndividuPage() {
     async function fetchBuildings() {
       try {
         setLoadingBuildings(true);
+        setLoadBuildingsError(null);
         const token = await getBackendToken();
         if (!token) return;
 
@@ -71,6 +77,7 @@ export default function CatatEnergiIndividuPage() {
         setBuildings(data);
       } catch (error) {
         console.error("Failed to fetch buildings:", error);
+        setLoadBuildingsError(userFriendlyError(error, 'Gagal memuat daftar bangunan. Silakan coba lagi.'));
       } finally {
         setLoadingBuildings(false);
       }
@@ -86,10 +93,12 @@ export default function CatatEnergiIndividuPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
+  // note: we store raw digits in `billCostRaw` and display formatted value via `formatIDR`
+
   const canSubmit =
     !!date &&
     !!buildingId &&
-    Number(billCost) >= 0 &&
+    Number(billCostRaw) >= 0 &&
     (useClean === undefined ||
       (useClean === true ? cleanType !== "" && Number(cleanKwh) >= 0 : true));
 
@@ -112,7 +121,8 @@ export default function CatatEnergiIndividuPage() {
       const payload: Record<string, unknown> = {
         report_date: date,
         building_asset_id: buildingId,
-        total_cost_rp: Number(billCost || 0),
+        // send raw number (IDR)
+        total_cost_rp: Number(billCostRaw),
       };
 
       // Jika memakai energi bersih, kirimkan field yang sesuai backend
@@ -137,7 +147,7 @@ export default function CatatEnergiIndividuPage() {
       // Safely read numeric CO₂ value from possible backend keys
       const respObj = (resp && typeof resp === "object") ? (resp as Record<string, unknown>) : {};
       const co2Keys = ["total_co2e", "total_co2e_produced", "emission_kgco2e"];
-      let totalCo2e: number | null = null;
+      let totalCo2e: number = 0;
       for (const k of co2Keys) {
         const v = respObj[k];
         if (typeof v === "number") {
@@ -161,21 +171,21 @@ export default function CatatEnergiIndividuPage() {
       addEnergy({
         date,
         buildingId,
-        billCost: Number(billCost || 0),
+        billCost: Number(billCostRaw),
         useClean: useClean,
         cleanType: useClean ? (cleanType as EnergyReport["cleanType"]) : undefined,
         cleanKwh: useClean ? Number(cleanKwh || 0) : undefined,
       });
 
       // Reset ringan form (biar siap input baru)
-      setBillCost("0");
+      setBillCostRaw("0");
       setCleanType("");
       setCleanKwh("0");
       setUseClean(undefined);
 
-  // Tampilkan modal sukses + total CO₂e (jika ada)
-  setSavedTotal(totalCo2e);
-  setSavedCleanEnergy(cleanEnergy);
+      // Tampilkan modal sukses + total CO₂e (jika ada)
+      setSavedTotal(totalCo2e);
+      setSavedCleanEnergy(cleanEnergy);
       setModalOpen(true);
     } catch (error) {
       console.error("❌ Failed to submit report:", error);
@@ -188,17 +198,17 @@ export default function CatatEnergiIndividuPage() {
 
   return (
     <ScrollContainer
-         headerTitle="Listrik"
-         leftContainer={
-           <button
-             onClick={() => router.back()}
-             aria-label="Kembali"
-             className="h-9 w-9 grid place-items-center"
-           >
-             <Image src="/arrow-left.svg" alt="" width={18} height={18} />
-           </button>
-         }
-       >
+      headerTitle="Listrik"
+      leftContainer={
+        <button
+          onClick={() => router.back()}
+          aria-label="Kembali"
+          className="h-9 w-9 grid place-items-center"
+        >
+          <Image src="/arrow-left.svg" alt="" width={18} height={18} />
+        </button>
+      }
+    >
 
       <div className="rounded-2xl p-4 space-y-4">
         <TextField
@@ -217,8 +227,8 @@ export default function CatatEnergiIndividuPage() {
             loadingBuildings
               ? "Memuat..."
               : buildingOptions.length
-              ? "Pilih Bangunan"
-              : "Belum ada bangunan"
+                ? "Pilih Bangunan"
+                : "Belum ada bangunan"
           }
           options={buildingOptions}
           value={buildingId}
@@ -227,14 +237,23 @@ export default function CatatEnergiIndividuPage() {
           required
         />
 
+        {loadBuildingsError && (
+          <div className="rounded-xl bg-red-50 border border-red-200 p-4 mt-2">
+            <p className="text-sm text-red-600">{loadBuildingsError}</p>
+          </div>
+        )}
+
         <TextField
           id="biayaListrik"
           label="Berapa biaya tagihan listrik bulanan?"
           placeholder="0"
-          leftIcon={<span className="text-black/60">Rp</span>}
+          // leftIcon={<span className="text-black/60">Rp</span>}
           inputMode="numeric"
-          value={billCost}
-          onChange={(e) => setBillCost(e.target.value)}
+          value={billCostRaw ? formatIDR(billCostRaw) : ""}
+          onChange={(e) => {
+            const digits = String(e.target.value || "").replace(/\D/g, "");
+            setBillCostRaw(digits === "" ? "0" : digits);
+          }}
         />
 
         {/* Toggle energi bersih */}
@@ -299,8 +318,8 @@ export default function CatatEnergiIndividuPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         reportKind="Energi Listrik"
-        total={savedTotal}
-        unit="kg CO₂e"
+        total={formatCarbonFootprint(savedTotal).value}
+        unit={formatCarbonFootprint(savedTotal).unit}
         redirectTo="/app/catat"
         cleanEnergy={savedCleanEnergy}
       />

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation"; // 1. Import usePathname
 import ProfileHeaderCard from "@/components/shared/profile/ProfileHeaderCard";
 import SectionTitle from "@/components/shared/profile/SectionTitle";
 import BadgeCard from "@/components/shared/profile/BadgeCard";
@@ -14,27 +14,38 @@ import { userService } from "@/services/user";
 import { authService } from "@/services/auth";
 import ScrollContainer from "@/components/nav/ScrollContainer";
 
-interface ScrollAwareHeaderProps {
-  title: string;
-}
-
 export default function ProfilPage() {
   const router = useRouter();
-  const { logout, getIdToken, currentUser: currentFirebaseUser } = useAuth();
+  const pathname = usePathname(); // 2. Dapatkan path saat ini (/app/profile)
+  
+  //@typescript-eslint/no-unused-vars
+  const { logout, currentUser: currentFirebaseUser } = useAuth();
+
+  // 3. Buat query string
+  const backQuery = `?backTo=${encodeURIComponent(pathname)}`;
 
   const BADGES_PATH = "/app/profile/lencana";
   const EDIT_PATH = "/app/profile/edit-profile";
   const SEC_PATH = "/app/profile/manajemen-bangunan";
   const TRITH_PATH = "/app/profile/manajemen-kendaraan";
-  const FOURTH_PATH = "/terms";
-  const FIVE_PATH = "/terms";
+  
+  // 4. Tambahkan query param ke link Syarat & Ketentuan dan Bantuan
+  const FOURTH_PATH = `/pusat-bantuan${backQuery}`; 
+  const FIVE_PATH = `/syarat-ketentuan${backQuery}`;
+  
   const AFTER_LOGOUT_PATH = "/";
 
+  // ... (Sisa kode state & useEffect sama persis seperti file asli Anda) ...
+  // ... (Tidak perlu diubah, cukup salin ulang bagian bawah ini) ...
+  
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [user, setUser] = useState<any | null>(null);
+  //@typescript-eslint/no-unused-vars
   const [loading, setLoading] = useState(true);
+  //@typescript-eslint/no-unused-vars
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // preview 2 lencana, prioritaskan yang dimiliki
   const previewBadges = useMemo(() => {
@@ -97,7 +108,12 @@ export default function ProfilPage() {
   }
 
   function onLogout() {
-    logout().finally(() => router.replace(AFTER_LOGOUT_PATH));
+    setIsLoggingOut(true);
+    logout()
+      .finally(() => {
+        setIsLoggingOut(false);
+        router.replace(AFTER_LOGOUT_PATH);
+      });
   }
 
   useEffect(() => {
@@ -133,13 +149,15 @@ export default function ProfilPage() {
           <div>
             <ProfileHeaderCard
               name={
-                user?.name || user?.individual_profile?.full_name || user?.email || "-"
+                user?.user_type === "lembaga"
+                  ? (user?.institution_profile?.name ?? user?.email ?? "-")
+                  : (user?.name ?? user?.individual_profile?.full_name ?? user?.email ?? "-")
               }
               email={user?.email || "-"}
               joinedText={formatJoined(user?.created_at || user?.joined)}
               level={user?.level || 0}
               totalPoints={user?.points || 0}
-              rank={user?.rank || ""}
+              rank={user?.rank || 0}
             />
           </div>
           {/* KOLEKSI LENCANA */}
@@ -220,7 +238,7 @@ export default function ProfilPage() {
           </div>
 
           {/* LOGOUT */}
-          <LogoutBar onClick={onLogout} />
+          <LogoutBar onClick={onLogout} isLoggingOut={isLoggingOut} />
 
           <p className="mt-3 text-center text-xs text-black/50">
             1000CahayaMu App v1.0.0
@@ -228,6 +246,5 @@ export default function ProfilPage() {
         </div>
       </div>
     </ScrollContainer>
-
   );
 }

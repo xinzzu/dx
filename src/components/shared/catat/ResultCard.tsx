@@ -1,11 +1,12 @@
 "use client";
 
+import { formatCarbonFootprint } from "@/utils/carbonAnalysis";
+
 type Props = {
-  value: number | string;
-  subtitle?: string;
+  value: number;
 };
 
-export default function ResultCard({ value, subtitle = "kg CO₂e bulan ini" }: Props) {
+export default function ResultCard({ value }: Props) {
   return (
     <div
       className="rounded-2xl border bg-white p-5 text-center"
@@ -15,9 +16,9 @@ export default function ResultCard({ value, subtitle = "kg CO₂e bulan ini" }: 
         className="text-6xl font-bold leading-none"
         style={{ color: "var(--color-primary)" }}
       >
-        {value}
+        {formatCarbonFootprint(value).value}
       </div>
-      <div className="mt-1 text-sm text-black/60">{subtitle}</div>
+      <div className="mt-1 text-sm text-black/60">{formatCarbonFootprint(value).unit}</div>
     </div>
   );
 }
